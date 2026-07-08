@@ -201,8 +201,7 @@ function renderPlayer(video) {
         loading="eager"
       ></iframe>
       <div class="player-fallback-action">
-        <span>若播放器未顯示，請改用新視窗播放。</span>
-        <a class="ghost-action" href="${escapeHtml(embedUrl)}" target="_blank" rel="noreferrer">開啟播放器</a>
+        <span>若播放器未顯示，請稍後再試。</span>
       </div>
     </div>
   `;
