@@ -1,7 +1,7 @@
 export const mockVideos = [
   {
     id: "entry260707-171713",
-    title: "深夜特選 01",
+    title: "夜趣影城",
     date: "2026-07-08",
     category: ["影音", "中文字幕"],
     tags: ["中文字幕", "劇情", "START-589", "START"],

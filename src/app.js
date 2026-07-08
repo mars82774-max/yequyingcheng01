@@ -89,9 +89,9 @@ function render() {
     <main>
       <section id="featured" class="hero">
         <div class="hero-copy">
-          <p class="eyebrow">Yequ Featured</p>
-          <h1>${escapeHtml(featured.title)}</h1>
-          <p class="summary">深夜精選片庫，依分類與標籤整理熱門內容，支援快速搜尋、詳情頁與播放入口。</p>
+          <p class="eyebrow">夜趣特選</p>
+          <h1>夜趣特選</h1>
+          <p class="summary">提供優質影片，陪你度過每個夜晚</p>
           <div class="hero-actions">
             <button class="primary-action" data-play="${featured.id}">播放預覽</button>
             <a class="ghost-action" href="${videoPath(featured)}">影片詳情</a>
