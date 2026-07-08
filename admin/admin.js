@@ -76,7 +76,8 @@ function renderAds() {
     return;
   }
 
-  adsList.innerHTML = ads.map(renderAdEditor).join("");
+  adsList.textContent = "";
+  ads.forEach((ad) => adsList.appendChild(renderAdEditor(ad)));
   adsList.querySelectorAll("input, select").forEach((input) => {
     input.addEventListener("input", updateFromForm);
     input.addEventListener("change", updateFromForm);
@@ -84,57 +85,90 @@ function renderAds() {
 }
 
 function renderAdEditor(ad) {
-  return `
-    <article class="ad-editor" data-slot="${escapeHtml(ad.slotKey)}">
-      <div class="editor-head">
-        <div>
-          <h3>${escapeHtml(ad.title)}</h3>
-          <code>${escapeHtml(ad.slotKey)}</code>
-        </div>
-        <label class="switch">
-          <input type="checkbox" data-field="enabled" ${ad.enabled ? "checked" : ""} />
-          <span>啟用</span>
-        </label>
-      </div>
-      <div class="form-grid">
-        <label>
-          標題
-          <input data-field="title" value="${escapeAttr(ad.title)}" />
-        </label>
-        <label>
-          排序
-          <input data-field="sort" type="number" value="${Number(ad.sort || 0)}" />
-        </label>
-        <label class="wide">
-          廣告圖片 URL
-          <input data-field="image" placeholder="https://example.com/ad.jpg" value="${escapeAttr(ad.image)}" />
-        </label>
-        <label class="wide">
-          跳轉連結
-          <input data-field="link" placeholder="https://example.com/" value="${escapeAttr(ad.link)}" />
-        </label>
-        <label>
-          開啟方式
-          <select data-field="target">
-            <option value="_blank" ${ad.target === "_blank" ? "selected" : ""}>新分頁</option>
-            <option value="_self" ${ad.target === "_self" ? "selected" : ""}>同分頁</option>
-          </select>
-        </label>
-        <label>
-          開始時間
-          <input data-field="startAt" type="datetime-local" value="${toLocalDatetime(ad.startAt)}" />
-        </label>
-        <label>
-          結束時間
-          <input data-field="endAt" type="datetime-local" value="${toLocalDatetime(ad.endAt)}" />
-        </label>
-        <div class="checks">
-          <label><input type="checkbox" data-field="desktopEnabled" ${ad.desktopEnabled ? "checked" : ""} /> 桌機顯示</label>
-          <label><input type="checkbox" data-field="mobileEnabled" ${ad.mobileEnabled ? "checked" : ""} /> 手機顯示</label>
-        </div>
-      </div>
-    </article>
-  `;
+  const article = document.createElement("article");
+  article.className = "ad-editor";
+  article.dataset.slot = ad.slotKey;
+
+  const head = document.createElement("div");
+  head.className = "editor-head";
+  const titleBox = document.createElement("div");
+  const title = document.createElement("h3");
+  title.textContent = ad.title;
+  const code = document.createElement("code");
+  code.textContent = ad.slotKey;
+  titleBox.append(title, code);
+  head.append(titleBox, createCheckbox("enabled", "啟用", ad.enabled, "switch"));
+
+  const grid = document.createElement("div");
+  grid.className = "form-grid";
+  grid.append(
+    createInput("title", "標題", ad.title),
+    createInput("sort", "排序", Number(ad.sort || 0), "number"),
+    createInput("image", "廣告圖片 URL", ad.image, "url", "https://example.com/ad.jpg", "wide"),
+    createInput("link", "跳轉連結", ad.link, "url", "https://example.com/", "wide"),
+    createSelect("target", "開啟方式", ad.target),
+    createInput("startAt", "開始時間", toLocalDatetime(ad.startAt), "datetime-local"),
+    createInput("endAt", "結束時間", toLocalDatetime(ad.endAt), "datetime-local"),
+    createChecks(ad)
+  );
+
+  article.append(head, grid);
+  return article;
+}
+
+function createInput(field, labelText, value, type = "text", placeholder = "", className = "") {
+  const label = document.createElement("label");
+  if (className) label.className = className;
+  label.append(labelText);
+  const input = document.createElement("input");
+  input.dataset.field = field;
+  input.type = type;
+  input.value = value ?? "";
+  input.placeholder = placeholder;
+  label.append(input);
+  return label;
+}
+
+function createSelect(field, labelText, value) {
+  const label = document.createElement("label");
+  label.append(labelText);
+  const select = document.createElement("select");
+  select.dataset.field = field;
+  [
+    ["_blank", "新分頁"],
+    ["_self", "同分頁"]
+  ].forEach(([optionValue, text]) => {
+    const option = document.createElement("option");
+    option.value = optionValue;
+    option.textContent = text;
+    option.selected = value === optionValue;
+    select.append(option);
+  });
+  label.append(select);
+  return label;
+}
+
+function createCheckbox(field, labelText, checked, className = "") {
+  const label = document.createElement("label");
+  if (className) label.className = className;
+  const input = document.createElement("input");
+  input.type = "checkbox";
+  input.dataset.field = field;
+  input.checked = Boolean(checked);
+  const span = document.createElement("span");
+  span.textContent = labelText;
+  label.append(input, span);
+  return label;
+}
+
+function createChecks(ad) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "checks";
+  wrapper.append(
+    createCheckbox("desktopEnabled", "桌機顯示", ad.desktopEnabled),
+    createCheckbox("mobileEnabled", "手機顯示", ad.mobileEnabled)
+  );
+  return wrapper;
 }
 
 function updateFromForm(event) {
@@ -193,8 +227,4 @@ function escapeHtml(value) {
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;");
-}
-
-function escapeAttr(value) {
-  return escapeHtml(value).replaceAll("'", "&#39;");
 }

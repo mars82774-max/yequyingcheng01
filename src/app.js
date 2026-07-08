@@ -181,10 +181,6 @@ function render() {
           <p class="eyebrow">夜趣特選</p>
           <h1>夜趣特選</h1>
           <p class="summary">提供優質影片，陪你度過每個夜晚</p>
-          <div class="meta-row">
-            <span>${escapeHtml(featured.date || "未標日期")}</span>
-            ${featured.category.map((cat) => `<a href="/category/${encodeURIComponent(cat)}/">${escapeHtml(cat)}</a>`).join("")}
-          </div>
         </div>
         ${heroAd}
       </section>
