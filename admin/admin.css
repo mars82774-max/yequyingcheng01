@@ -1,0 +1,194 @@
+:root {
+  color-scheme: dark;
+  --bg: #090909;
+  --panel: #151515;
+  --line: rgba(255, 255, 255, 0.1);
+  --text: #f4efe8;
+  --muted: #cfc3ad;
+  --gold: #d4af37;
+  --danger: #ff6b6b;
+  font-family: Inter, "Noto Sans TC", system-ui, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  color: var(--text);
+  background:
+    radial-gradient(circle at 20% 0%, rgba(74, 14, 14, 0.5), transparent 28rem),
+    linear-gradient(180deg, #111, var(--bg));
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
+
+button {
+  border: 0;
+  border-radius: 999px;
+  padding: 11px 18px;
+  color: #151008;
+  background: var(--gold);
+  font-weight: 900;
+  cursor: pointer;
+}
+
+button.secondary {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--line);
+}
+
+.admin-shell {
+  width: min(1180px, calc(100% - 32px));
+  margin: 0 auto;
+  padding: 34px 0 72px;
+}
+
+.admin-hero,
+.panel,
+.ad-editor {
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: rgba(21, 21, 21, 0.86);
+}
+
+.admin-hero {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  padding: 22px;
+  margin-bottom: 22px;
+}
+
+.admin-hero img {
+  width: 180px;
+}
+
+.admin-hero p,
+.muted {
+  color: var(--muted);
+}
+
+.admin-hero h1,
+.panel h2,
+.ad-editor h3 {
+  margin: 0;
+}
+
+.panel {
+  padding: 24px;
+}
+
+.hidden {
+  display: none;
+}
+
+.login-form,
+.toolbar,
+.toolbar-actions,
+.editor-head,
+.checks {
+  display: flex;
+  gap: 14px;
+}
+
+.toolbar,
+.editor-head {
+  align-items: center;
+  justify-content: space-between;
+}
+
+.login-form {
+  align-items: end;
+  flex-wrap: wrap;
+}
+
+label {
+  display: grid;
+  gap: 8px;
+  color: var(--muted);
+  font-weight: 800;
+}
+
+input,
+select {
+  width: 100%;
+  min-height: 42px;
+  color: var(--text);
+  background: #0d0d0d;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 9px 11px;
+}
+
+.message {
+  min-height: 24px;
+  margin: 14px 0;
+  color: var(--gold);
+}
+
+.message.error {
+  color: var(--danger);
+}
+
+.ads-list {
+  display: grid;
+  gap: 16px;
+}
+
+.ad-editor {
+  padding: 18px;
+}
+
+.ad-editor code {
+  color: var(--gold);
+}
+
+.switch {
+  display: flex;
+  grid-template-columns: none;
+  align-items: center;
+}
+
+.switch input,
+.checks input {
+  width: auto;
+  min-height: auto;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 18px;
+}
+
+.wide {
+  grid-column: 1 / -1;
+}
+
+.checks {
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 760px) {
+  .admin-hero,
+  .toolbar,
+  .editor-head,
+  .toolbar-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .form-grid {
+    grid-template-columns: 1fr;
+  }
+}

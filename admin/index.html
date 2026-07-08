@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>夜趣影城廣告後台</title>
+    <link rel="icon" href="/assets/brands/yequyingcheng/favicon.svg" />
+    <link rel="stylesheet" href="/admin/admin.css" />
+  </head>
+  <body>
+    <main class="admin-shell">
+      <section class="admin-hero">
+        <img src="/assets/brands/yequyingcheng/logo.svg" alt="夜趣影城" />
+        <div>
+          <p>Ads Admin</p>
+          <h1>夜趣影城廣告管理</h1>
+          <span>管理 Cloudflare KV 內的廣告設定，前台即時讀取。</span>
+        </div>
+      </section>
+
+      <section id="loginPanel" class="panel">
+        <h2>管理員登入</h2>
+        <form id="loginForm" class="login-form">
+          <label>
+            管理密碼
+            <input id="password" type="password" autocomplete="current-password" required />
+          </label>
+          <button type="submit">登入</button>
+        </form>
+        <p class="muted">密碼由 Cloudflare Pages 環境變數 ADMIN_PASSWORD 控制，不寫在前端。</p>
+      </section>
+
+      <section id="dashboard" class="panel hidden">
+        <div class="toolbar">
+          <div>
+            <h2>廣告位列表</h2>
+            <p class="muted">儲存後前台會從 API 讀取最新設定。</p>
+          </div>
+          <div class="toolbar-actions">
+            <button id="reloadBtn" type="button" class="secondary">重新載入</button>
+            <button id="saveBtn" type="button">儲存設定</button>
+            <button id="logoutBtn" type="button" class="secondary">登出</button>
+          </div>
+        </div>
+        <div id="message" class="message" role="status"></div>
+        <div id="adsList" class="ads-list"></div>
+      </section>
+    </main>
+    <script type="module" src="/admin/admin.js"></script>
+  </body>
+</html>

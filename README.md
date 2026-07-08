@@ -1,6 +1,6 @@
 # Yequyingcheng Cloudflare Pages Project
 
-This is a static frontend project for Yequyingcheng. It is ready for Cloudflare Pages deployment and currently uses `mockVideos` as its data source. It does not include real ad-network integrations and does not require a Cloudflare API token.
+Static frontend plus a lightweight Cloudflare Pages Functions ad admin for Yequyingcheng.
 
 ## Local Development
 
@@ -14,6 +14,8 @@ Default local URL:
 http://localhost:4173
 ```
 
+The local static dev server does not emulate Cloudflare KV or Pages Functions. If `/api/ads` is unavailable, the frontend uses `src/adsConfig.js` defaults.
+
 ## Static Build
 
 ```bash
@@ -26,32 +28,85 @@ Build output:
 dist
 ```
 
-## SEO Output
-
-`npm run build` generates:
-
-- `/video/<id>/index.html`: static detail page for each video
-- `/tag/<tag>/index.html`: static tag archive pages
-- `/category/<category>/index.html`: static category archive pages
-- `/sitemap.xml`
-- `/robots.txt`
-
-These pages include crawlable titles, descriptions, categories, tags, static links, and VideoObject structured data for search engines such as Google and Baidu.
-
 ## Cloudflare Pages Settings
 
 - Project name: `yequyingcheng01`
 - Production branch: `main`
 - Build command: `npm run build`
 - Build output directory: `dist`
-- Environment variables: `None`
+- Framework preset: `None`
+
+## Cloudflare Functions And KV
+
+This project uses Cloudflare Pages Functions:
+
+- `GET /api/ads?siteCode=yequyingcheng01`: public read-only ad config
+- `POST /api/admin/login`: admin login
+- `POST /api/admin/logout`: admin logout
+- `GET /api/admin/ads?siteCode=yequyingcheng01`: authenticated ad config read
+- `PUT /api/admin/ads`: authenticated ad config write
+
+Create a KV namespace and bind it to Pages:
+
+```text
+Binding name: ADS_KV
+```
+
+Set this Pages environment variable:
+
+```text
+ADMIN_PASSWORD=<your admin password>
+```
+
+Do not put the admin password or Cloudflare API token in frontend code.
+
+`wrangler.example.toml` includes a KV binding template. Copy it to `wrangler.toml` only if you deploy with Wrangler. In the Cloudflare dashboard, configure the same binding name `ADS_KV`.
+
+## Admin
+
+Admin page:
+
+```text
+/admin
+```
+
+The first version supports:
+
+- Login with `ADMIN_PASSWORD`
+- List all ad slots
+- Enable or disable ads
+- Image URL input
+- Link URL input
+- Target setting
+- Desktop and mobile visibility
+- Start and end time
+- Sort order
+- Save to Cloudflare KV
+
+Ad slots:
+
+- `ad_mobile_top`
+- `ad_desktop_leaderboard`
+- `ad_hero_side`
+- `ad_player_below`
+- `ad_inline_banner`
+- `ad_native_card`
+- `ad_sidebar`
+
+## Frontend Ad Behavior
+
+- Frontend reads `/api/ads?siteCode=yequyingcheng01`
+- If the API fails, it falls back to `src/adsConfig.js`
+- Disabled ads are not rendered and do not leave blank space
+- Mobile ads are regular in-flow blocks and do not cover bottom navigation
+- Ads display `Advertisement` or `AD`
+- Native ad card displays an `AD` label
 
 ## Project Rules
 
-- Brand assets are stored in: `assets/brands/yequyingcheng/`
-- Image paths use web-relative paths, for example `/assets/brands/yequyingcheng/logo.svg`
+- Brand assets are stored in `assets/brands/yequyingcheng/`
+- Image paths use web-relative paths
 - Video data currently comes from `src/mockVideos.js`
-- Do not handle Cloudflare account login
-- Do not request a Cloudflare API token
-- Do not change DNS
-- Do not add real ad-network integrations
+- No real ad-network integrations
+- No third-party CMS
+- No DNS changes

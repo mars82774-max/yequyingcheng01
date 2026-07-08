@@ -1,3 +1,4 @@
+import { adsConfig, isAdActive, normalizeAds, SITE_CODE } from "./adsConfig.js";
 import { mockVideos } from "./mockVideos.js";
 
 const brand = {
@@ -9,10 +10,31 @@ const brand = {
 let state = {
   query: "",
   tag: "全部",
-  selected: mockVideos[0]
+  selected: mockVideos[0],
+  ads: adsConfig
 };
 
 const app = document.querySelector("#app");
+
+init();
+
+async function init() {
+  state.ads = await loadAds();
+  render();
+}
+
+async function loadAds() {
+  try {
+    const response = await fetch(`/api/ads?siteCode=${encodeURIComponent(SITE_CODE)}`, {
+      headers: { Accept: "application/json" }
+    });
+    if (!response.ok) throw new Error(`Ads API ${response.status}`);
+    const payload = await response.json();
+    return normalizeAds(payload.ads);
+  } catch {
+    return normalizeAds(adsConfig);
+  }
+}
 
 function uniqueTags() {
   const tags = new Set(["全部"]);
@@ -55,39 +77,65 @@ function cardArt(video, index) {
 }
 
 function escapeHtml(value) {
-  return String(value)
+  return String(value ?? "")
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;");
 }
 
+function renderAdSlot(slotKey, options = {}) {
+  const viewport = window.matchMedia("(max-width: 760px)").matches ? "mobile" : "desktop";
+  const ads = state.ads
+    .filter((ad) => ad.slotKey === slotKey && isAdActive(ad, viewport))
+    .sort((a, b) => Number(a.sort || 0) - Number(b.sort || 0));
+  if (!ads.length) return "";
+
+  return ads.map((ad) => renderAd(ad, options)).join("");
+}
+
+function renderAd(ad, options = {}) {
+  const label = options.native ? "AD" : "Advertisement";
+  const image = ad.image
+    ? `<img src="${escapeHtml(ad.image)}" alt="${escapeHtml(ad.title)}" loading="lazy" />`
+    : `<div class="ad-empty"><strong>${escapeHtml(ad.title)}</strong><span>廣告素材待設定</span></div>`;
+  const body = `
+    <span class="ad-label">${label}</span>
+    ${image}
+    ${options.native ? `<strong>${escapeHtml(ad.title)}</strong>` : ""}
+  `;
+  if (!ad.link) {
+    return `<div class="ad-slot ${options.className || ""}" data-slot="${escapeHtml(ad.slotKey)}">${body}</div>`;
+  }
+  return `<a class="ad-slot ${options.className || ""}" data-slot="${escapeHtml(ad.slotKey)}" href="${escapeHtml(ad.link)}" target="${escapeHtml(ad.target || "_blank")}" rel="noreferrer">${body}</a>`;
+}
+
 function renderPlayer(video) {
   const embedUrl = playableEmbedUrl(video.embed_url);
-  if (embedUrl) {
+  if (!embedUrl) {
     return `
-      <div class="player-shell">
-        <iframe
-          src="${escapeHtml(embedUrl)}"
-          title="${escapeHtml(video.title)}"
-          allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
-          allowfullscreen
-          referrerpolicy="no-referrer"
-          loading="eager"
-        ></iframe>
-        <div class="player-fallback-action">
-          <span>若播放器未顯示，請改用新視窗播放。</span>
-          <a class="ghost-action" href="${escapeHtml(embedUrl)}" target="_blank" rel="noreferrer">開啟播放器</a>
-        </div>
+      <div class="player-empty">
+        <img src="${brand.icon}" alt="" />
+        <strong>影片即將上架</strong>
+        <span>此影片正在整理中，請先瀏覽其他精選內容。</span>
       </div>
     `;
   }
 
   return `
-    <div class="player-empty">
-      <img src="${brand.icon}" alt="" />
-      <strong>影片即將上架</strong>
-      <span>此影片正在整理中，請先瀏覽其他精選內容。</span>
+    <div class="player-shell">
+      <iframe
+        src="${escapeHtml(embedUrl)}"
+        title="${escapeHtml(video.title)}"
+        allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
+        allowfullscreen
+        referrerpolicy="no-referrer"
+        loading="eager"
+      ></iframe>
+      <div class="player-fallback-action">
+        <span>若播放器未顯示，請改用新視窗播放。</span>
+        <a class="ghost-action" href="${escapeHtml(embedUrl)}" target="_blank" rel="noreferrer">開啟播放器</a>
+      </div>
     </div>
   `;
 }
@@ -101,19 +149,15 @@ function playableEmbedUrl(url) {
   return url;
 }
 
-function renderHeroAd() {
-  return `
-    <div class="hero-ad">
-      <span>Advertisement</span>
-      <strong>首頁主視覺廣告位</strong>
-      <small>可放橫幅、輪播或廣告商素材</small>
-    </div>
-  `;
-}
-
 function render() {
   const videos = filteredVideos();
   const featured = state.selected || videos[0] || mockVideos[0];
+  const mobileTop = renderAdSlot("ad_mobile_top", { className: "ad-mobile-top" });
+  const leaderboard = renderAdSlot("ad_desktop_leaderboard", { className: "ad-leaderboard" });
+  const heroAd = renderAdSlot("ad_hero_side", { className: "ad-hero" });
+  const inlineAd = renderAdSlot("ad_inline_banner", { className: "ad-inline" });
+  const nativeAd = renderAdSlot("ad_native_card", { className: "ad-native", native: true });
+
   app.innerHTML = `
     <header class="topbar">
       <a class="brand" href="/" aria-label="${brand.name}">
@@ -130,29 +174,22 @@ function render() {
     </header>
 
     <main>
+      ${mobileTop}
+      ${leaderboard}
       <section id="featured" class="hero">
         <div class="hero-copy">
           <p class="eyebrow">夜趣特選</p>
           <h1>夜趣特選</h1>
           <p class="summary">提供優質影片，陪你度過每個夜晚</p>
-          <div class="hero-actions">
-            <button class="primary-action" data-play="${featured.id}">播放預覽</button>
-            <a class="ghost-action" href="${videoPath(featured)}">影片詳情</a>
-          </div>
           <div class="meta-row">
             <span>${escapeHtml(featured.date || "未標日期")}</span>
             ${featured.category.map((cat) => `<a href="/category/${encodeURIComponent(cat)}/">${escapeHtml(cat)}</a>`).join("")}
           </div>
         </div>
-        <div class="hero-player" aria-label="影片播放器">
-          ${renderHeroAd()}
-        </div>
+        ${heroAd}
       </section>
 
-      <section class="ad-placeholder" aria-label="廣告版位">
-        <span>Reserved Placement</span>
-        <strong>970 x 90</strong>
-      </section>
+      ${inlineAd}
 
       <section id="tags" class="tag-strip" aria-label="標籤篩選">
         ${uniqueTags().map((tag) => `<button class="${tag === state.tag ? "active" : ""}" data-tag="${escapeHtml(tag)}">${escapeHtml(tag)}</button>`).join("")}
@@ -168,6 +205,7 @@ function render() {
         </div>
         <div class="video-grid">
           ${videos.map((video, index) => `
+            ${index === 2 ? nativeAd : ""}
             <article class="video-card" data-video="${video.id}">
               <a class="thumb" href="${videoPath(video)}">
                 ${cardArt(video, index)}
@@ -218,5 +256,3 @@ function bindEvents() {
     });
   });
 }
-
-render();

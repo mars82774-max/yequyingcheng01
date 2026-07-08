@@ -1,0 +1,8 @@
+name = "yequyingcheng01"
+compatibility_date = "2026-07-08"
+pages_build_output_dir = "dist"
+
+[[kv_namespaces]]
+binding = "ADS_KV"
+id = "your_production_kv_namespace_id"
+preview_id = "your_preview_kv_namespace_id"

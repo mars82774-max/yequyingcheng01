@@ -10,7 +10,7 @@ const siteUrl = "https://yequyingcheng01.pages.dev";
 await rm(dist, { recursive: true, force: true });
 await mkdir(dist, { recursive: true });
 
-for (const entry of ["src", "assets"]) {
+for (const entry of ["src", "assets", "admin"]) {
   await cp(join(root, entry), join(dist, entry), { recursive: true });
 }
 
@@ -81,6 +81,7 @@ function pageShell({ title, description, path, body, image = "/assets/brands/yeq
     <link rel="icon" href="/assets/brands/yequyingcheng/favicon.svg" />
     <link rel="stylesheet" href="/src/styles.css" />
     ${jsonLd ? `<script type="application/ld+json">${JSON.stringify(jsonLd)}</script>` : ""}
+    <script type="module" src="/src/adsRuntime.js"></script>
   </head>
   <body>
     <header class="topbar">
@@ -136,6 +137,7 @@ function renderVideoPage(video) {
         <div class="hero-player seo-player">
           ${renderEmbedPlayer(video)}
         </div>
+        <div data-ad-slot="ad_player_below"></div>
       </article>
     </main>`
   });
