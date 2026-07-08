@@ -3,9 +3,133 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>夜趣影城廣告後台</title>
+    <title>夜趣影城廣告管理</title>
     <link rel="icon" href="/assets/brands/yequyingcheng/favicon.svg" />
-    <link rel="stylesheet" href="/admin/admin.css" />
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #090909;
+        --panel: #151515;
+        --line: rgba(255, 255, 255, 0.1);
+        --text: #f4efe8;
+        --muted: #cfc3ad;
+        --gold: #d4af37;
+        --danger: #ff6b6b;
+        font-family: Inter, "Noto Sans TC", system-ui, sans-serif;
+      }
+
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        color: var(--text);
+        background:
+          radial-gradient(circle at 20% 0%, rgba(74, 14, 14, 0.5), transparent 28rem),
+          linear-gradient(180deg, #111, var(--bg));
+      }
+      button, input, select { font: inherit; }
+      button {
+        border: 0;
+        border-radius: 999px;
+        padding: 11px 18px;
+        color: #151008;
+        background: var(--gold);
+        font-weight: 900;
+        cursor: pointer;
+      }
+      button.secondary {
+        color: var(--text);
+        background: rgba(255, 255, 255, 0.08);
+        border: 1px solid var(--line);
+      }
+      .admin-shell {
+        width: min(1180px, calc(100% - 32px));
+        margin: 0 auto;
+        padding: 34px 0 72px;
+      }
+      .admin-hero, .panel, .ad-editor {
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        background: rgba(21, 21, 21, 0.86);
+      }
+      .admin-hero {
+        display: flex;
+        align-items: center;
+        gap: 22px;
+        padding: 22px;
+        margin-bottom: 22px;
+      }
+      .admin-hero img { width: 180px; }
+      .admin-hero p, .muted { color: var(--muted); }
+      .admin-hero h1, .panel h2, .ad-editor h3 { margin: 0; }
+      .panel { padding: 24px; }
+      .hidden { display: none; }
+      .login-form, .toolbar, .toolbar-actions, .editor-head, .checks {
+        display: flex;
+        gap: 14px;
+      }
+      .toolbar, .editor-head {
+        align-items: center;
+        justify-content: space-between;
+      }
+      .login-form {
+        align-items: end;
+        flex-wrap: wrap;
+      }
+      label {
+        display: grid;
+        gap: 8px;
+        color: var(--muted);
+        font-weight: 800;
+      }
+      input, select {
+        width: 100%;
+        min-height: 42px;
+        color: var(--text);
+        background: #0d0d0d;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 9px 11px;
+      }
+      .message {
+        min-height: 24px;
+        margin: 14px 0;
+        color: var(--gold);
+      }
+      .message.error { color: var(--danger); }
+      .ads-list {
+        display: grid;
+        gap: 16px;
+      }
+      .ad-editor { padding: 18px; }
+      .ad-editor code { color: var(--gold); }
+      .switch {
+        display: flex;
+        align-items: center;
+      }
+      .switch input, .checks input {
+        width: auto;
+        min-height: auto;
+      }
+      .form-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 14px;
+        margin-top: 18px;
+      }
+      .wide { grid-column: 1 / -1; }
+      .checks {
+        align-items: center;
+        flex-wrap: wrap;
+      }
+      @media (max-width: 760px) {
+        .admin-hero, .toolbar, .editor-head, .toolbar-actions {
+          align-items: stretch;
+          flex-direction: column;
+        }
+        .form-grid { grid-template-columns: 1fr; }
+      }
+    </style>
   </head>
   <body>
     <main class="admin-shell">
@@ -46,6 +170,262 @@
         <div id="adsList" class="ads-list"></div>
       </section>
     </main>
-    <script type="module" src="/admin/admin.js"></script>
+
+    <script>
+      const SITE_CODE = "yequyingcheng01";
+      const defaultAds = [
+        ["ad_mobile_top", "頂部手機廣告", false, false, true, 1],
+        ["ad_desktop_leaderboard", "桌機橫幅廣告", false, true, false, 2],
+        ["ad_hero_side", "首頁主視覺廣告位", true, true, true, 3],
+        ["ad_player_below", "播放器下方廣告", false, true, true, 4],
+        ["ad_inline_banner", "內容中段橫幅廣告", false, true, true, 5],
+        ["ad_native_card", "原生廣告卡", false, true, true, 6],
+        ["ad_sidebar", "側欄廣告", false, true, false, 7]
+      ].map(([slotKey, title, enabled, desktopEnabled, mobileEnabled, sort]) => ({
+        siteCode: SITE_CODE,
+        slotKey,
+        enabled,
+        title,
+        image: "",
+        link: "",
+        target: "_blank",
+        desktopEnabled,
+        mobileEnabled,
+        startAt: "",
+        endAt: "",
+        sort
+      }));
+
+      let ads = normalizeAds(defaultAds);
+      const loginPanel = document.querySelector("#loginPanel");
+      const dashboard = document.querySelector("#dashboard");
+      const loginForm = document.querySelector("#loginForm");
+      const message = document.querySelector("#message");
+      const adsList = document.querySelector("#adsList");
+
+      loginForm.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const password = document.querySelector("#password").value;
+        const response = await fetch("/api/admin/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ password })
+        });
+        if (!response.ok) {
+          setMessage("登入失敗，請確認管理密碼。", true);
+          return;
+        }
+        document.querySelector("#password").value = "";
+        await enterDashboard();
+      });
+
+      document.querySelector("#reloadBtn").addEventListener("click", enterDashboard);
+      document.querySelector("#saveBtn").addEventListener("click", saveAds);
+      document.querySelector("#logoutBtn").addEventListener("click", async () => {
+        await fetch("/api/admin/logout", { method: "POST" });
+        dashboard.classList.add("hidden");
+        loginPanel.classList.remove("hidden");
+        setMessage("");
+      });
+
+      checkSession();
+
+      async function checkSession() {
+        const response = await fetch(`/api/admin/ads?siteCode=${encodeURIComponent(SITE_CODE)}`);
+        if (!response.ok) {
+          renderAds();
+          return;
+        }
+        const payload = await response.json();
+        ads = normalizeAds(payload.ads);
+        showDashboard();
+        setMessage(`已載入 ${ads.length} 個廣告位。`);
+      }
+
+      async function enterDashboard() {
+        const response = await fetch(`/api/admin/ads?siteCode=${encodeURIComponent(SITE_CODE)}`);
+        if (!response.ok) {
+          setMessage("無法讀取廣告設定，請重新登入。", true);
+          return;
+        }
+        const payload = await response.json();
+        ads = normalizeAds(payload.ads);
+        showDashboard();
+        setMessage(`已載入 ${ads.length} 個廣告位。`);
+      }
+
+      function showDashboard() {
+        loginPanel.classList.add("hidden");
+        dashboard.classList.remove("hidden");
+        renderAds();
+      }
+
+      function normalizeAds(input) {
+        const source = Array.isArray(input) ? input : [];
+        const bySlot = new Map(source.map((item) => [item.slotKey, item]));
+        return defaultAds
+          .map((fallback) => sanitizeAd({ ...fallback, ...(bySlot.get(fallback.slotKey) || {}) }))
+          .sort((a, b) => Number(a.sort || 0) - Number(b.sort || 0));
+      }
+
+      function sanitizeAd(ad) {
+        return {
+          siteCode: String(ad.siteCode || SITE_CODE),
+          slotKey: String(ad.slotKey || ""),
+          enabled: Boolean(ad.enabled),
+          title: String(ad.title || ""),
+          image: String(ad.image || ""),
+          link: String(ad.link || ""),
+          target: ad.target === "_self" ? "_self" : "_blank",
+          desktopEnabled: Boolean(ad.desktopEnabled),
+          mobileEnabled: Boolean(ad.mobileEnabled),
+          startAt: String(ad.startAt || ""),
+          endAt: String(ad.endAt || ""),
+          sort: Number(ad.sort || 0)
+        };
+      }
+
+      function renderAds() {
+        ads = normalizeAds(ads);
+        adsList.textContent = "";
+        ads.forEach((ad) => adsList.appendChild(renderAdEditor(ad)));
+      }
+
+      function renderAdEditor(ad) {
+        const article = document.createElement("article");
+        article.className = "ad-editor";
+        article.dataset.slot = ad.slotKey;
+
+        const head = document.createElement("div");
+        head.className = "editor-head";
+        const titleBox = document.createElement("div");
+        const title = document.createElement("h3");
+        title.textContent = ad.title;
+        const code = document.createElement("code");
+        code.textContent = ad.slotKey;
+        titleBox.append(title, code);
+        head.append(titleBox, createCheckbox("enabled", "啟用", ad.enabled, "switch"));
+
+        const grid = document.createElement("div");
+        grid.className = "form-grid";
+        grid.append(
+          createInput("title", "標題", ad.title),
+          createInput("sort", "排序", Number(ad.sort || 0), "number"),
+          createInput("image", "廣告圖片 URL", ad.image, "url", "https://example.com/ad.jpg", "wide"),
+          createInput("link", "跳轉連結", ad.link, "url", "https://example.com/", "wide"),
+          createSelect("target", "開啟方式", ad.target),
+          createInput("startAt", "開始時間", toLocalDatetime(ad.startAt), "datetime-local"),
+          createInput("endAt", "結束時間", toLocalDatetime(ad.endAt), "datetime-local"),
+          createChecks(ad)
+        );
+
+        article.append(head, grid);
+        return article;
+      }
+
+      function createInput(field, labelText, value, type = "text", placeholder = "", className = "") {
+        const label = document.createElement("label");
+        if (className) label.className = className;
+        label.append(labelText);
+        const input = document.createElement("input");
+        input.dataset.field = field;
+        input.type = type;
+        input.value = value ?? "";
+        input.placeholder = placeholder;
+        label.append(input);
+        return label;
+      }
+
+      function createSelect(field, labelText, value) {
+        const label = document.createElement("label");
+        label.append(labelText);
+        const select = document.createElement("select");
+        select.dataset.field = field;
+        [
+          ["_blank", "新分頁"],
+          ["_self", "同分頁"]
+        ].forEach(([optionValue, text]) => {
+          const option = document.createElement("option");
+          option.value = optionValue;
+          option.textContent = text;
+          option.selected = value === optionValue;
+          select.append(option);
+        });
+        label.append(select);
+        return label;
+      }
+
+      function createCheckbox(field, labelText, checked, className = "") {
+        const label = document.createElement("label");
+        if (className) label.className = className;
+        const input = document.createElement("input");
+        input.type = "checkbox";
+        input.dataset.field = field;
+        input.checked = Boolean(checked);
+        const span = document.createElement("span");
+        span.textContent = labelText;
+        label.append(input, span);
+        return label;
+      }
+
+      function createChecks(ad) {
+        const wrapper = document.createElement("div");
+        wrapper.className = "checks";
+        wrapper.append(
+          createCheckbox("desktopEnabled", "桌機顯示", ad.desktopEnabled),
+          createCheckbox("mobileEnabled", "手機顯示", ad.mobileEnabled)
+        );
+        return wrapper;
+      }
+
+      function updateFromForm() {
+        document.querySelectorAll(".ad-editor").forEach((editor) => {
+          const item = ads.find((ad) => ad.slotKey === editor.dataset.slot);
+          if (!item) return;
+          editor.querySelectorAll("[data-field]").forEach((field) => {
+            const name = field.dataset.field;
+            if (field.type === "checkbox") {
+              item[name] = field.checked;
+            } else if (name === "sort") {
+              item[name] = Number(field.value || 0);
+            } else if (name === "startAt" || name === "endAt") {
+              item[name] = field.value ? new Date(field.value).toISOString() : "";
+            } else {
+              item[name] = field.value;
+            }
+          });
+        });
+      }
+
+      async function saveAds() {
+        updateFromForm();
+        ads = normalizeAds(ads).map((ad) => ({ ...ad, siteCode: SITE_CODE }));
+        const response = await fetch("/api/admin/ads", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ siteCode: SITE_CODE, ads })
+        });
+        if (!response.ok) {
+          setMessage("儲存失敗，請確認登入狀態與 KV 綁定。", true);
+          return;
+        }
+        const payload = await response.json();
+        ads = normalizeAds(payload.ads);
+        renderAds();
+        setMessage(`已儲存 ${ads.length} 個廣告位，前台會讀取最新設定。`);
+      }
+
+      function setMessage(text, isError = false) {
+        message.textContent = text;
+        message.classList.toggle("error", isError);
+      }
+
+      function toLocalDatetime(value) {
+        if (!value) return "";
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) return "";
+        return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+      }
+    </script>
   </body>
 </html>
