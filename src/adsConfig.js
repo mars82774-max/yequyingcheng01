@@ -105,8 +105,25 @@ export function normalizeAds(input) {
   const source = Array.isArray(input) ? input : [];
   const bySlot = new Map(source.map((item) => [item.slotKey, item]));
   return adsConfig
-    .map((fallback) => ({ ...fallback, ...(bySlot.get(fallback.slotKey) || {}) }))
+    .map((fallback) => sanitizeAd({ ...fallback, ...(bySlot.get(fallback.slotKey) || {}) }))
     .sort((a, b) => Number(a.sort || 0) - Number(b.sort || 0));
+}
+
+export function sanitizeAd(ad) {
+  return {
+    siteCode: String(ad.siteCode || SITE_CODE),
+    slotKey: String(ad.slotKey || ""),
+    enabled: Boolean(ad.enabled),
+    title: String(ad.title || ""),
+    image: String(ad.image || ""),
+    link: String(ad.link || ""),
+    target: ad.target === "_self" ? "_self" : "_blank",
+    desktopEnabled: Boolean(ad.desktopEnabled),
+    mobileEnabled: Boolean(ad.mobileEnabled),
+    startAt: String(ad.startAt || ""),
+    endAt: String(ad.endAt || ""),
+    sort: Number(ad.sort || 0)
+  };
 }
 
 export function isAdActive(ad, viewport = "desktop", now = new Date()) {

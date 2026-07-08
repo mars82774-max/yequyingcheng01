@@ -16,10 +16,12 @@ loginForm.addEventListener("submit", async (event) => {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ password })
   });
+
   if (!response.ok) {
-    setMessage("登入失敗，請確認 ADMIN_PASSWORD。", true);
+    setMessage("登入失敗，請確認管理密碼。", true);
     return;
   }
+
   document.querySelector("#password").value = "";
   await enterDashboard();
 });
@@ -30,19 +32,22 @@ document.querySelector("#logoutBtn").addEventListener("click", async () => {
   await fetch("/api/admin/logout", { method: "POST" });
   dashboard.classList.add("hidden");
   loginPanel.classList.remove("hidden");
+  setMessage("");
 });
 
 checkSession();
 
 async function checkSession() {
   const response = await fetch(`/api/admin/ads?siteCode=${encodeURIComponent(SITE_CODE)}`);
-  if (response.ok) {
-    const payload = await response.json();
-    ads = normalizeAds(payload.ads);
-    showDashboard();
+  if (!response.ok) {
+    renderAds();
     return;
   }
-  renderAds();
+
+  const payload = await response.json();
+  ads = normalizeAds(payload.ads);
+  showDashboard();
+  setMessage(`已載入 ${ads.length} 個廣告位。`);
 }
 
 async function enterDashboard() {
@@ -51,10 +56,11 @@ async function enterDashboard() {
     setMessage("無法讀取廣告設定，請重新登入。", true);
     return;
   }
+
   const payload = await response.json();
   ads = normalizeAds(payload.ads);
   showDashboard();
-  setMessage("已載入最新設定。");
+  setMessage(`已載入 ${ads.length} 個廣告位。`);
 }
 
 function showDashboard() {
@@ -64,6 +70,12 @@ function showDashboard() {
 }
 
 function renderAds() {
+  ads = normalizeAds(ads);
+  if (!ads.length) {
+    adsList.innerHTML = `<p class="muted">目前沒有廣告位資料。</p>`;
+    return;
+  }
+
   adsList.innerHTML = ads.map(renderAdEditor).join("");
   adsList.querySelectorAll("input, select").forEach((input) => {
     input.addEventListener("input", updateFromForm);
@@ -127,10 +139,12 @@ function renderAdEditor(ad) {
 
 function updateFromForm(event) {
   const editor = event.target.closest("[data-slot]");
+  if (!editor) return;
   const slotKey = editor.dataset.slot;
   const field = event.target.dataset.field;
   const item = ads.find((ad) => ad.slotKey === slotKey);
   if (!item || !field) return;
+
   if (event.target.type === "checkbox") {
     item[field] = event.target.checked;
   } else if (field === "sort") {
@@ -149,14 +163,16 @@ async function saveAds() {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ siteCode: SITE_CODE, ads })
   });
+
   if (!response.ok) {
     setMessage("儲存失敗，請確認登入狀態與 KV 綁定。", true);
     return;
   }
+
   const payload = await response.json();
   ads = normalizeAds(payload.ads);
   renderAds();
-  setMessage("已儲存，前台會讀取最新廣告設定。");
+  setMessage(`已儲存 ${ads.length} 個廣告位，前台會讀取最新設定。`);
 }
 
 function setMessage(text, isError = false) {
