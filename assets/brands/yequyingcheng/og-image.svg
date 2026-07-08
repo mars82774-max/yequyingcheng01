@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" role="img" aria-labelledby="title desc">
+  <title id="title">夜趣影城 social share image</title>
+  <desc id="desc">Dark cinematic Yequ Cinema sharing image with gold logo and copy.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#060606"/>
+      <stop offset="0.45" stop-color="#11100D"/>
+      <stop offset="1" stop-color="#1A1208"/>
+    </linearGradient>
+    <radialGradient id="light" cx="40%" cy="35%" r="65%">
+      <stop offset="0" stop-color="#6F521A" stop-opacity="0.55"/>
+      <stop offset="0.45" stop-color="#201807" stop-opacity="0.25"/>
+      <stop offset="1" stop-color="#000000" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="gold" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#FFF3B0"/>
+      <stop offset="0.25" stop-color="#F7D866"/>
+      <stop offset="0.55" stop-color="#D4AF37"/>
+      <stop offset="0.82" stop-color="#A9791D"/>
+      <stop offset="1" stop-color="#FFE58A"/>
+    </linearGradient>
+    <filter id="glow" x="-35%" y="-35%" width="170%" height="170%">
+      <feGaussianBlur stdDeviation="5" result="blur"/>
+      <feColorMatrix in="blur" type="matrix" values="1 0 0 0 1  0 1 0 0 0.72  0 0 1 0 0.18  0 0 0 0.65 0"/>
+      <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <pattern id="grain" width="64" height="64" patternUnits="userSpaceOnUse">
+      <circle cx="8" cy="12" r="1" fill="#FFFFFF" opacity="0.05"/>
+      <circle cx="40" cy="28" r="1" fill="#FFFFFF" opacity="0.035"/>
+      <circle cx="24" cy="52" r="1" fill="#D4AF37" opacity="0.06"/>
+    </pattern>
+  </defs>
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <rect width="1200" height="630" fill="url(#light)"/>
+  <rect width="1200" height="630" fill="url(#grain)"/>
+  <g opacity="0.28">
+    <rect x="0" y="430" width="1200" height="200" fill="#020202"/>
+    <rect x="70" y="345" width="92" height="285" fill="#101010"/>
+    <rect x="190" y="390" width="120" height="240" fill="#0C0C0C"/>
+    <rect x="335" y="318" width="84" height="312" fill="#121212"/>
+    <rect x="880" y="360" width="130" height="270" fill="#0E0E0E"/>
+    <rect x="1040" y="310" width="70" height="320" fill="#121212"/>
+    <circle cx="155" cy="405" r="5" fill="#D4AF37"/>
+    <circle cx="1010" cy="428" r="4" fill="#D4AF37"/>
+  </g>
+  <g transform="translate(110 130)" filter="url(#glow)">
+    <path fill="url(#gold)" d="M140 0C95 7 62 45 62 92c0 52 42 94 94 94 28 0 54-12 71-32-16 11-35 17-56 17-52 0-94-42-94-94 0-34 18-64 45-81 6-4 12-7 18-10z"/>
+    <path fill="url(#gold)" d="M136 69c0-9 10-15 18-10l45 27c8 5 8 16 0 21l-45 27c-8 5-18-1-18-10V69z"/>
+    <path fill="none" stroke="url(#gold)" stroke-width="13" stroke-linecap="round" d="M110 26c50 7 85 35 107 83"/>
+    <text x="260" y="86" fill="url(#gold)" font-family="Noto Serif CJK TC, Noto Sans CJK TC, serif" font-size="78" font-weight="700" letter-spacing="3">夜趣影城</text>
+    <text x="266" y="135" fill="#FFE7A3" font-family="Montserrat, Arial, sans-serif" font-size="24" letter-spacing="12">YEQU CINEMA</text>
+  </g>
+  <text x="120" y="420" fill="#F5E8C8" font-family="Noto Sans CJK TC, Arial, sans-serif" font-size="30" letter-spacing="3">精選影音・熱門排行・最新更新</text>
+  <text x="120" y="470" fill="#BBAF92" font-family="Noto Sans CJK TC, Arial, sans-serif" font-size="22">打造沉浸式的深夜觀影體驗</text>
+  <rect x="120" y="515" width="260" height="48" rx="24" fill="url(#gold)"/>
+  <text x="154" y="546" fill="#1A1205" font-family="Montserrat, Arial, sans-serif" font-size="18" font-weight="700" letter-spacing="2">yequyingcheng01</text>
+</svg>
