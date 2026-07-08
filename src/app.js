@@ -118,6 +118,32 @@ function renderHeroAdCarousel() {
   `;
 }
 
+function renderFeaturedVideosPanel(videos) {
+  const featuredVideos = (videos.length ? videos : mockVideos).slice(0, 5);
+  return `
+    <aside class="featured-panel" aria-label="精選影片">
+      <div class="featured-panel-head">
+        <div>
+          <p class="eyebrow">Featured</p>
+          <h2>精選影片</h2>
+        </div>
+        <span>${featuredVideos.length} 部</span>
+      </div>
+      <div class="featured-cover-grid">
+        ${featuredVideos.map((video, index) => `
+          <a class="featured-cover-card ${index === 0 ? "large" : ""}" href="${videoPath(video)}">
+            <span class="featured-cover">
+              ${cardArt(video, index)}
+              <span class="play-dot">播放</span>
+            </span>
+            <strong>${escapeHtml(video.title)}</strong>
+          </a>
+        `).join("")}
+      </div>
+    </aside>
+  `;
+}
+
 function renderAd(ad, options = {}) {
   const label = options.native ? "AD" : "Advertisement";
   const body = `
@@ -203,7 +229,7 @@ function render() {
   const featured = state.selected || videos[0] || mockVideos[0];
   const mobileTop = renderAdSlot("ad_mobile_top", { className: "ad-mobile-top" });
   const leaderboard = renderAdSlot("ad_desktop_leaderboard", { className: "ad-leaderboard" });
-  const heroAd = renderHeroAdCarousel();
+  const heroFeatured = renderFeaturedVideosPanel(videos);
   const inlineAd = renderAdSlot("ad_inline_banner", { className: "ad-inline" });
   const nativeAd = renderAdSlot("ad_native_card", { className: "ad-native", native: true });
 
@@ -231,7 +257,7 @@ function render() {
           <h1>夜趣特選</h1>
           <p class="summary">提供優質影片，陪你度過每個夜晚</p>
         </div>
-        ${heroAd}
+        ${heroFeatured}
       </section>
 
       ${inlineAd}
