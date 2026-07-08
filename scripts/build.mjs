@@ -102,6 +102,7 @@ function pageShell({ title, description, path, body, image = "/assets/brands/yeq
 function renderVideoPage(video) {
   const path = `/video/${encodeURIComponent(video.id)}/`;
   const tags = publicTags(video);
+  const embedUrl = playableEmbedUrl(video.embed_url);
   const description = `${video.title}，分類包含 ${video.category.join("、")}，標籤包含 ${tags.join("、")}。`;
   const jsonLd = {
     "@context": "https://schema.org",
@@ -110,7 +111,7 @@ function renderVideoPage(video) {
     description,
     thumbnailUrl: video.cover || "/assets/brands/yequyingcheng/og-image.png",
     uploadDate: video.date,
-    embedUrl: video.embed_url || undefined,
+    embedUrl: embedUrl || undefined,
     genre: video.category,
     keywords: tags.join(", ")
   };
@@ -142,13 +143,14 @@ function renderVideoPage(video) {
 }
 
 function renderEmbedPlayer(video) {
-  if (!video.embed_url) {
+  const embedUrl = playableEmbedUrl(video.embed_url);
+  if (!embedUrl) {
     return `<div class="player-empty"><img src="/assets/brands/yequyingcheng/logo-icon.svg" alt="" /><strong>影片即將上架</strong><span>此影片正在整理中，請先瀏覽其他精選內容。</span></div>`;
   }
 
   return `<div class="player-shell">
     <iframe
-      src="${escapeHtml(video.embed_url)}"
+      src="${escapeHtml(embedUrl)}"
       title="${escapeHtml(video.title)}"
       allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
       allowfullscreen
@@ -160,6 +162,15 @@ function renderEmbedPlayer(video) {
       <a class="ghost-action" href="${escapeHtml(video.embed_url)}" target="_blank" rel="noreferrer">開啟播放器</a>
     </div>
   </div>`;
+}
+
+function playableEmbedUrl(url) {
+  if (!url) return "";
+  const id = String(url).match(/[?&]id=([^&]+)/)?.[1];
+  if (String(url).includes("a-big.com/player") && id) {
+    return `https://mmsi01.com/e/${encodeURIComponent(id)}`;
+  }
+  return url;
 }
 
 function renderListingPage(title, videos, path) {

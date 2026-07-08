@@ -63,11 +63,12 @@ function escapeHtml(value) {
 }
 
 function renderPlayer(video) {
-  if (video.embed_url) {
+  const embedUrl = playableEmbedUrl(video.embed_url);
+  if (embedUrl) {
     return `
       <div class="player-shell">
         <iframe
-          src="${escapeHtml(video.embed_url)}"
+          src="${escapeHtml(embedUrl)}"
           title="${escapeHtml(video.title)}"
           allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
           allowfullscreen
@@ -76,7 +77,7 @@ function renderPlayer(video) {
         ></iframe>
         <div class="player-fallback-action">
           <span>若播放器未顯示，請改用新視窗播放。</span>
-          <a class="ghost-action" href="${escapeHtml(video.embed_url)}" target="_blank" rel="noreferrer">開啟播放器</a>
+          <a class="ghost-action" href="${escapeHtml(embedUrl)}" target="_blank" rel="noreferrer">開啟播放器</a>
         </div>
       </div>
     `;
@@ -89,6 +90,15 @@ function renderPlayer(video) {
       <span>此影片正在整理中，請先瀏覽其他精選內容。</span>
     </div>
   `;
+}
+
+function playableEmbedUrl(url) {
+  if (!url) return "";
+  const id = String(url).match(/[?&]id=([^&]+)/)?.[1];
+  if (String(url).includes("a-big.com/player") && id) {
+    return `https://mmsi01.com/e/${encodeURIComponent(id)}`;
+  }
+  return url;
 }
 
 function render() {
