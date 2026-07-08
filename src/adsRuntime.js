@@ -34,12 +34,19 @@ async function loadAds() {
 }
 
 function renderAd(ad) {
-  const image = ad.image
-    ? `<img src="${escapeHtml(ad.image)}" alt="${escapeHtml(ad.title)}" loading="lazy" />`
-    : `<div class="ad-empty"><strong>${escapeHtml(ad.title)}</strong><span>廣告素材待設定</span></div>`;
-  const body = `<span class="ad-label">Advertisement</span>${image}`;
+  const body = `<span class="ad-label">Advertisement</span>${renderAdMedia(ad)}`;
   if (!ad.link) return `<div class="ad-slot" data-slot="${escapeHtml(ad.slotKey)}">${body}</div>`;
   return `<a class="ad-slot" data-slot="${escapeHtml(ad.slotKey)}" href="${escapeHtml(ad.link)}" target="${escapeHtml(ad.target || "_blank")}" rel="noreferrer">${body}</a>`;
+}
+
+function renderAdMedia(ad) {
+  if (!ad.image) {
+    return `<div class="ad-empty"><strong>${escapeHtml(ad.title)}</strong><span>廣告素材待設定</span></div>`;
+  }
+  if (/\.(mp4|webm|ogg)(?:[?#].*)?$/i.test(String(ad.image))) {
+    return `<video src="${escapeHtml(ad.image)}" autoplay muted loop playsinline preload="metadata"></video>`;
+  }
+  return `<img src="${escapeHtml(ad.image)}" alt="${escapeHtml(ad.title)}" loading="lazy" />`;
 }
 
 function escapeHtml(value) {

@@ -86,28 +86,77 @@ function escapeHtml(value) {
 
 function renderAdSlot(slotKey, options = {}) {
   const viewport = window.matchMedia("(max-width: 760px)").matches ? "mobile" : "desktop";
-  const ads = state.ads
-    .filter((ad) => ad.slotKey === slotKey && isAdActive(ad, viewport))
-    .sort((a, b) => Number(a.sort || 0) - Number(b.sort || 0));
+  const ads = activeAds([slotKey], viewport);
   if (!ads.length) return "";
 
   return ads.map((ad) => renderAd(ad, options)).join("");
 }
 
+function activeAds(slotKeys, viewport) {
+  const allowedSlots = new Set(slotKeys);
+  return state.ads
+    .filter((ad) => allowedSlots.has(ad.slotKey) && isAdActive(ad, viewport))
+    .sort((a, b) => Number(a.sort || 0) - Number(b.sort || 0));
+}
+
+function renderHeroAdCarousel() {
+  const viewport = window.matchMedia("(max-width: 760px)").matches ? "mobile" : "desktop";
+  const ads = activeAds(["ad_hero_side", "ad_mobile_top", "ad_desktop_leaderboard"], viewport);
+  if (!ads.length) return "";
+  if (ads.length === 1) return renderAd(ads[0], { className: "ad-hero" });
+
+  return `
+    <div class="ad-slot ad-hero ad-carousel" data-carousel>
+      <span class="ad-label">Advertisement</span>
+      <div class="ad-carousel-track">
+        ${ads.map((ad, index) => renderAdSlide(ad, index === 0)).join("")}
+      </div>
+      <div class="ad-carousel-dots" aria-label="廣告輪播指示">
+        ${ads.map((ad, index) => `<button type="button" class="${index === 0 ? "active" : ""}" data-carousel-dot="${index}" aria-label="切換到廣告 ${index + 1}"></button>`).join("")}
+      </div>
+    </div>
+  `;
+}
+
 function renderAd(ad, options = {}) {
   const label = options.native ? "AD" : "Advertisement";
-  const image = ad.image
-    ? `<img src="${escapeHtml(ad.image)}" alt="${escapeHtml(ad.title)}" loading="lazy" />`
-    : `<div class="ad-empty"><strong>${escapeHtml(ad.title)}</strong><span>廣告素材待設定</span></div>`;
   const body = `
     <span class="ad-label">${label}</span>
-    ${image}
+    ${renderAdMedia(ad)}
     ${options.native ? `<strong>${escapeHtml(ad.title)}</strong>` : ""}
   `;
   if (!ad.link) {
     return `<div class="ad-slot ${options.className || ""}" data-slot="${escapeHtml(ad.slotKey)}">${body}</div>`;
   }
   return `<a class="ad-slot ${options.className || ""}" data-slot="${escapeHtml(ad.slotKey)}" href="${escapeHtml(ad.link)}" target="${escapeHtml(ad.target || "_blank")}" rel="noreferrer">${body}</a>`;
+}
+
+function renderAdSlide(ad, active) {
+  const body = `
+    ${renderAdMedia(ad)}
+    <div class="ad-slide-caption">
+      <strong>${escapeHtml(ad.title)}</strong>
+    </div>
+  `;
+  const className = `ad-slide ${active ? "active" : ""}`;
+  if (!ad.link) {
+    return `<div class="${className}" data-slot="${escapeHtml(ad.slotKey)}">${body}</div>`;
+  }
+  return `<a class="${className}" data-slot="${escapeHtml(ad.slotKey)}" href="${escapeHtml(ad.link)}" target="${escapeHtml(ad.target || "_blank")}" rel="noreferrer">${body}</a>`;
+}
+
+function renderAdMedia(ad) {
+  if (!ad.image) {
+    return `<div class="ad-empty"><strong>${escapeHtml(ad.title)}</strong><span>廣告素材待設定</span></div>`;
+  }
+  if (isVideoAsset(ad.image)) {
+    return `<video src="${escapeHtml(ad.image)}" autoplay muted loop playsinline preload="metadata"></video>`;
+  }
+  return `<img src="${escapeHtml(ad.image)}" alt="${escapeHtml(ad.title)}" loading="lazy" />`;
+}
+
+function isVideoAsset(url) {
+  return /\.(mp4|webm|ogg)(?:[?#].*)?$/i.test(String(url));
 }
 
 function renderPlayer(video) {
@@ -154,7 +203,7 @@ function render() {
   const featured = state.selected || videos[0] || mockVideos[0];
   const mobileTop = renderAdSlot("ad_mobile_top", { className: "ad-mobile-top" });
   const leaderboard = renderAdSlot("ad_desktop_leaderboard", { className: "ad-leaderboard" });
-  const heroAd = renderAdSlot("ad_hero_side", { className: "ad-hero" });
+  const heroAd = renderHeroAdCarousel();
   const inlineAd = renderAdSlot("ad_inline_banner", { className: "ad-inline" });
   const nativeAd = renderAdSlot("ad_native_card", { className: "ad-native", native: true });
 
@@ -250,5 +299,25 @@ function bindEvents() {
       window.scrollTo({ top: 0, behavior: "smooth" });
       render();
     });
+  });
+
+  startAdCarousels();
+}
+
+function startAdCarousels() {
+  document.querySelectorAll("[data-carousel]").forEach((carousel) => {
+    const slides = [...carousel.querySelectorAll(".ad-slide")];
+    const dots = [...carousel.querySelectorAll("[data-carousel-dot]")];
+    if (slides.length < 2) return;
+    let index = Math.max(0, slides.findIndex((slide) => slide.classList.contains("active")));
+
+    const show = (nextIndex) => {
+      index = nextIndex % slides.length;
+      slides.forEach((slide, slideIndex) => slide.classList.toggle("active", slideIndex === index));
+      dots.forEach((dot, dotIndex) => dot.classList.toggle("active", dotIndex === index));
+    };
+
+    dots.forEach((dot, dotIndex) => dot.addEventListener("click", () => show(dotIndex)));
+    window.setInterval(() => show(index + 1), 5000);
   });
 }
