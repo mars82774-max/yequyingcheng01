@@ -24,8 +24,8 @@ for (const video of mockVideos) {
   await writeHtml(`video/${video.id}/index.html`, renderVideoPage(video));
 }
 
-for (const tag of unique(mockVideos.flatMap((video) => video.tags))) {
-  const videos = mockVideos.filter((video) => video.tags.includes(tag));
+for (const tag of unique(mockVideos.flatMap((video) => publicTags(video)))) {
+  const videos = mockVideos.filter((video) => publicTags(video).includes(tag));
   await writeHtml(`tag/${tag}/index.html`, renderListingPage(`標籤：${tag}`, videos, `/tag/${encodeURIComponent(tag)}/`));
 }
 
@@ -47,6 +47,14 @@ async function writeHtml(relativePath, html) {
 
 function unique(values) {
   return [...new Set(values.filter(Boolean))];
+}
+
+function isCatalogCode(value) {
+  return /^[A-Z]{2,6}(?:-\d{2,5})?$/.test(String(value).trim());
+}
+
+function publicTags(video) {
+  return (video.tags || []).filter((tag) => tag && !isCatalogCode(tag));
 }
 
 function escapeHtml(value) {
@@ -93,7 +101,8 @@ function pageShell({ title, description, path, body, image = "/assets/brands/yeq
 
 function renderVideoPage(video) {
   const path = `/video/${encodeURIComponent(video.id)}/`;
-  const description = `${video.title}，分類包含 ${video.category.join("、")}，標籤包含 ${video.tags.join("、")}。`;
+  const tags = publicTags(video);
+  const description = `${video.title}，分類包含 ${video.category.join("、")}，標籤包含 ${tags.join("、")}。`;
   const jsonLd = {
     "@context": "https://schema.org",
     "@type": "VideoObject",
@@ -103,7 +112,7 @@ function renderVideoPage(video) {
     uploadDate: video.date,
     embedUrl: video.embed_url || undefined,
     genre: video.category,
-    keywords: video.tags.join(", ")
+    keywords: tags.join(", ")
   };
 
   return pageShell({
@@ -122,7 +131,7 @@ function renderVideoPage(video) {
           ${video.category.map((category) => `<a href="/category/${encodeURIComponent(category)}/">${escapeHtml(category)}</a>`).join("")}
         </div>
         <div class="chips">
-          ${video.tags.map((tag) => `<a href="/tag/${encodeURIComponent(tag)}/">${escapeHtml(tag)}</a>`).join("")}
+          ${tags.map((tag) => `<a href="/tag/${encodeURIComponent(tag)}/">${escapeHtml(tag)}</a>`).join("")}
         </div>
         <div class="hero-player seo-player">
           ${video.embed_url ? `<iframe src="${video.embed_url}" title="${escapeHtml(video.title)}" allowfullscreen loading="lazy"></iframe>` : `<div class="player-empty"><img src="/assets/brands/yequyingcheng/logo-icon.svg" alt="" /><strong>影片即將上架</strong><span>此影片正在整理中，請先瀏覽其他精選內容。</span></div>`}
@@ -164,7 +173,7 @@ function renderSeoCard(video, index) {
     <div class="card-body">
       <h3><a href="/video/${encodeURIComponent(video.id)}/">${escapeHtml(video.title)}</a></h3>
       <p>${escapeHtml(video.date)} · ${escapeHtml(video.provider)}</p>
-      <div class="chips">${video.tags.slice(0, 4).map((tag) => `<a href="/tag/${encodeURIComponent(tag)}/">${escapeHtml(tag)}</a>`).join("")}</div>
+      <div class="chips">${publicTags(video).slice(0, 4).map((tag) => `<a href="/tag/${encodeURIComponent(tag)}/">${escapeHtml(tag)}</a>`).join("")}</div>
     </div>
   </article>`;
 }
@@ -181,7 +190,7 @@ function renderSitemap() {
   const urls = [
     "/",
     ...mockVideos.map((video) => `/video/${encodeURIComponent(video.id)}/`),
-    ...unique(mockVideos.flatMap((video) => video.tags)).map((tag) => `/tag/${encodeURIComponent(tag)}/`),
+    ...unique(mockVideos.flatMap((video) => publicTags(video))).map((tag) => `/tag/${encodeURIComponent(tag)}/`),
     ...unique(mockVideos.flatMap((video) => video.category)).map((category) => `/category/${encodeURIComponent(category)}/`)
   ];
   return `<?xml version="1.0" encoding="UTF-8"?>

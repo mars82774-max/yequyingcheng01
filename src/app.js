@@ -16,17 +16,26 @@ const app = document.querySelector("#app");
 
 function uniqueTags() {
   const tags = new Set(["全部"]);
-  mockVideos.forEach((video) => video.tags.forEach((tag) => tags.add(tag)));
+  mockVideos.forEach((video) => publicTags(video).forEach((tag) => tags.add(tag)));
   return [...tags];
 }
 
 function filteredVideos() {
   const keyword = state.query.trim().toLowerCase();
   return mockVideos.filter((video) => {
-    const text = [video.title, ...video.category, ...video.tags].join(" ").toLowerCase();
-    const tagMatched = state.tag === "全部" || video.tags.includes(state.tag) || video.category.includes(state.tag);
+    const tags = publicTags(video);
+    const text = [video.title, ...video.category, ...tags].join(" ").toLowerCase();
+    const tagMatched = state.tag === "全部" || tags.includes(state.tag) || video.category.includes(state.tag);
     return tagMatched && (!keyword || text.includes(keyword));
   });
+}
+
+function isCatalogCode(value) {
+  return /^[A-Z]{2,6}(?:-\d{2,5})?$/.test(String(value).trim());
+}
+
+function publicTags(video) {
+  return (video.tags || []).filter((tag) => tag && !isCatalogCode(tag));
 }
 
 function videoPath(video) {
@@ -134,7 +143,7 @@ function render() {
                 <h3><a href="${videoPath(video)}">${escapeHtml(video.title)}</a></h3>
                 <p>${escapeHtml(video.date || "未標日期")} · ${escapeHtml(video.provider || "精選")}</p>
                 <div class="chips">
-                  ${video.tags.slice(0, 4).map((tag) => `<a href="${tagPath(tag)}">${escapeHtml(tag)}</a>`).join("")}
+                  ${publicTags(video).slice(0, 4).map((tag) => `<a href="${tagPath(tag)}">${escapeHtml(tag)}</a>`).join("")}
                 </div>
               </div>
             </article>
