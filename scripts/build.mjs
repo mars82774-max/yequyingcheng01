@@ -6,6 +6,15 @@ import { mockVideos } from "../src/mockVideos.js";
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const dist = join(root, "dist");
 const siteUrl = "https://yequyingcheng01.pages.dev";
+const baiduAnalytics = `<script>
+      var _hmt = _hmt || [];
+      (function() {
+        var hm = document.createElement("script");
+        hm.src = "https://hm.baidu.com/hm.js?743125cc115e3dffb3011f7039eeb505";
+        var s = document.getElementsByTagName("script")[0];
+        s.parentNode.insertBefore(hm, s);
+      })();
+    </script>`;
 
 await rm(dist, { recursive: true, force: true });
 await mkdir(dist, { recursive: true });
@@ -82,6 +91,7 @@ function pageShell({ title, description, path, body, image = "/assets/brands/yeq
     <link rel="stylesheet" href="/src/styles.css" />
     ${jsonLd ? `<script type="application/ld+json">${JSON.stringify(jsonLd)}</script>` : ""}
     <script type="module" src="/src/adsRuntime.js"></script>
+    ${baiduAnalytics}
   </head>
   <body>
     <header class="topbar">
