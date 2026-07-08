@@ -121,24 +121,21 @@ function renderHeroAdCarousel() {
 function renderFeaturedVideosPanel(videos) {
   const featuredVideos = (videos.length ? videos : mockVideos).slice(0, 5);
   return `
-    <aside class="featured-panel" aria-label="精選影片">
-      <div class="featured-panel-head">
-        <div>
-          <p class="eyebrow">Featured</p>
-          <h2>精選影片</h2>
-        </div>
-        <span>${featuredVideos.length} 部</span>
-      </div>
-      <div class="featured-cover-grid">
+    <aside class="featured-panel featured-carousel" aria-label="精選影片輪播" data-video-carousel>
+      <div class="featured-carousel-track">
         ${featuredVideos.map((video, index) => `
-          <a class="featured-cover-card ${index === 0 ? "large" : ""}" href="${videoPath(video)}">
-            <span class="featured-cover">
-              ${cardArt(video, index)}
-              <span class="play-dot">播放</span>
+          <a class="featured-slide ${index === 0 ? "active" : ""}" href="${videoPath(video)}">
+            ${cardArt(video, index)}
+            <span class="play-dot">播放</span>
+            <span class="featured-slide-caption">
+              <span class="eyebrow">精選影片</span>
+              <strong>${escapeHtml(video.title)}</strong>
             </span>
-            <strong>${escapeHtml(video.title)}</strong>
           </a>
         `).join("")}
+      </div>
+      <div class="featured-dots" aria-label="精選影片輪播指示">
+        ${featuredVideos.map((video, index) => `<button type="button" class="${index === 0 ? "active" : ""}" data-video-carousel-dot="${index}" aria-label="切換到精選影片 ${index + 1}"></button>`).join("")}
       </div>
     </aside>
   `;
@@ -283,7 +280,7 @@ function render() {
                 <span class="play-dot">播放</span>
               </a>
               <div class="card-body">
-                <h3><a href="${videoPath(video)}">${escapeHtml(video.title)}</a></h3>
+                <h3 class="video-title"><a href="${videoPath(video)}">${escapeHtml(video.title)}</a></h3>
                 <p>${escapeHtml(video.date || "未標日期")} · ${escapeHtml(video.provider || "精選")}</p>
                 <div class="chips">
                   ${publicTags(video).slice(0, 4).map((tag) => `<a href="${tagPath(tag)}">${escapeHtml(tag)}</a>`).join("")}
@@ -328,12 +325,31 @@ function bindEvents() {
   });
 
   startAdCarousels();
+  startVideoCarousels();
 }
 
 function startAdCarousels() {
   document.querySelectorAll("[data-carousel]").forEach((carousel) => {
     const slides = [...carousel.querySelectorAll(".ad-slide")];
     const dots = [...carousel.querySelectorAll("[data-carousel-dot]")];
+    if (slides.length < 2) return;
+    let index = Math.max(0, slides.findIndex((slide) => slide.classList.contains("active")));
+
+    const show = (nextIndex) => {
+      index = nextIndex % slides.length;
+      slides.forEach((slide, slideIndex) => slide.classList.toggle("active", slideIndex === index));
+      dots.forEach((dot, dotIndex) => dot.classList.toggle("active", dotIndex === index));
+    };
+
+    dots.forEach((dot, dotIndex) => dot.addEventListener("click", () => show(dotIndex)));
+    window.setInterval(() => show(index + 1), 5000);
+  });
+}
+
+function startVideoCarousels() {
+  document.querySelectorAll("[data-video-carousel]").forEach((carousel) => {
+    const slides = [...carousel.querySelectorAll(".featured-slide")];
+    const dots = [...carousel.querySelectorAll("[data-video-carousel-dot]")];
     if (slides.length < 2) return;
     let index = Math.max(0, slides.findIndex((slide) => slide.classList.contains("active")));
 
