@@ -159,41 +159,6 @@ main {
   object-fit: cover;
 }
 
-.featured-slide::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(180deg, rgba(0, 0, 0, 0.08), rgba(0, 0, 0, 0.8));
-}
-
-.featured-slide-caption {
-  position: absolute;
-  left: 22px;
-  right: 22px;
-  bottom: 52px;
-  z-index: 2;
-  display: -webkit-box;
-  padding: 14px 16px;
-  color: var(--text);
-  background: rgba(8, 8, 8, 0.68);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 14px;
-  backdrop-filter: blur(12px);
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-
-.featured-slide-caption .eyebrow {
-  display: block;
-  margin-bottom: 6px;
-}
-
-.featured-slide-caption strong {
-  font-size: clamp(18px, 2.3vw, 30px);
-  line-height: 1.35;
-}
-
 .featured-dots {
   position: absolute;
   left: 0;
@@ -595,6 +560,8 @@ h1 {
 }
 
 .video-card {
+  display: grid;
+  grid-template-rows: auto 1fr;
   overflow: hidden;
   cursor: pointer;
   transition: transform 0.22s ease, border-color 0.22s ease;
@@ -608,6 +575,7 @@ h1 {
 .thumb {
   position: relative;
   aspect-ratio: 16 / 9;
+  display: block;
   overflow: hidden;
   background: var(--surface-2);
 }
@@ -649,7 +617,7 @@ h1 {
 
 .card-body {
   padding: 14px;
-  min-height: 132px;
+  min-height: 118px;
 }
 
 .card-body h3 {
@@ -664,6 +632,7 @@ h1 {
 .video-title {
   color: var(--text);
   font-size: 17px;
+  min-height: 48px;
 }
 
 .card-body p {

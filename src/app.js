@@ -127,10 +127,6 @@ function renderFeaturedVideosPanel(videos) {
           <a class="featured-slide ${index === 0 ? "active" : ""}" href="${videoPath(video)}">
             ${cardArt(video, index)}
             <span class="play-dot">播放</span>
-            <span class="featured-slide-caption">
-              <span class="eyebrow">精選影片</span>
-              <strong>${escapeHtml(video.title)}</strong>
-            </span>
           </a>
         `).join("")}
       </div>
