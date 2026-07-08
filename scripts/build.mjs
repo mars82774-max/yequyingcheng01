@@ -103,12 +103,13 @@ function renderVideoPage(video) {
   const path = `/video/${encodeURIComponent(video.id)}/`;
   const tags = publicTags(video);
   const embedUrl = playableEmbedUrl(video.embed_url);
-  const description = `${video.title}，分類包含 ${video.category.join("、")}，標籤包含 ${tags.join("、")}。`;
+  const visibleDescription = cleanVideoDescription(video);
+  const metaDescription = visibleDescription || video.title;
   const jsonLd = {
     "@context": "https://schema.org",
     "@type": "VideoObject",
     name: video.title,
-    description,
+    description: metaDescription,
     thumbnailUrl: video.cover || "/assets/brands/yequyingcheng/og-image.png",
     uploadDate: video.date,
     embedUrl: embedUrl || undefined,
@@ -118,15 +119,15 @@ function renderVideoPage(video) {
 
   return pageShell({
     title: `${video.title} | 夜趣影城`,
-    description,
+    description: metaDescription,
     path,
     image: video.cover || "/assets/brands/yequyingcheng/og-image.png",
     jsonLd,
     body: `<main>
       <article class="seo-detail">
         <p class="eyebrow">Video Detail</p>
-        <h1>${escapeHtml(video.title)}</h1>
-        <p class="summary">${escapeHtml(description)}</p>
+        <h1 class="video-detail-title">${escapeHtml(video.title)}</h1>
+        ${visibleDescription ? `<p class="summary video-detail-description">${escapeHtml(visibleDescription)}</p>` : ""}
         <div class="meta-row">
           <span>${escapeHtml(video.date)}</span>
           ${video.category.map((category) => `<a href="/category/${encodeURIComponent(category)}/">${escapeHtml(category)}</a>`).join("")}
@@ -141,6 +142,26 @@ function renderVideoPage(video) {
       </article>
     </main>`
   });
+}
+
+function cleanVideoDescription(video) {
+  const title = String(video?.title || "").trim();
+  let description = String(video?.description || "").trim();
+  if (!description || description === title) return "";
+
+  if (title && description.startsWith(title)) {
+    description = description.slice(title.length).trim();
+    description = description.replace(/^[，,。.\s:：-]+/, "").trim();
+  }
+
+  description = description
+    .replace(/分類包含[^。.!！?？]*[。.!！?？]?/g, "")
+    .replace(/標籤包含[^。.!！?？]*[。.!！?？]?/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (!description || description === title || description.length < 20) return "";
+  return description.length > 120 ? `${description.slice(0, 120).trim()}...` : description;
 }
 
 function renderEmbedPlayer(video) {
