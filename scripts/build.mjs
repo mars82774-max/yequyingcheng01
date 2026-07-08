@@ -134,11 +134,32 @@ function renderVideoPage(video) {
           ${tags.map((tag) => `<a href="/tag/${encodeURIComponent(tag)}/">${escapeHtml(tag)}</a>`).join("")}
         </div>
         <div class="hero-player seo-player">
-          ${video.embed_url ? `<iframe src="${video.embed_url}" title="${escapeHtml(video.title)}" allowfullscreen loading="lazy"></iframe>` : `<div class="player-empty"><img src="/assets/brands/yequyingcheng/logo-icon.svg" alt="" /><strong>影片即將上架</strong><span>此影片正在整理中，請先瀏覽其他精選內容。</span></div>`}
+          ${renderEmbedPlayer(video)}
         </div>
       </article>
     </main>`
   });
+}
+
+function renderEmbedPlayer(video) {
+  if (!video.embed_url) {
+    return `<div class="player-empty"><img src="/assets/brands/yequyingcheng/logo-icon.svg" alt="" /><strong>影片即將上架</strong><span>此影片正在整理中，請先瀏覽其他精選內容。</span></div>`;
+  }
+
+  return `<div class="player-shell">
+    <iframe
+      src="${escapeHtml(video.embed_url)}"
+      title="${escapeHtml(video.title)}"
+      allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
+      allowfullscreen
+      referrerpolicy="no-referrer"
+      loading="eager"
+    ></iframe>
+    <div class="player-fallback-action">
+      <span>若播放器未顯示，請改用新視窗播放。</span>
+      <a class="ghost-action" href="${escapeHtml(video.embed_url)}" target="_blank" rel="noreferrer">開啟播放器</a>
+    </div>
+  </div>`;
 }
 
 function renderListingPage(title, videos, path) {

@@ -64,7 +64,22 @@ function escapeHtml(value) {
 
 function renderPlayer(video) {
   if (video.embed_url) {
-    return `<iframe src="${video.embed_url}" title="${escapeHtml(video.title)}" allowfullscreen loading="lazy"></iframe>`;
+    return `
+      <div class="player-shell">
+        <iframe
+          src="${escapeHtml(video.embed_url)}"
+          title="${escapeHtml(video.title)}"
+          allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
+          allowfullscreen
+          referrerpolicy="no-referrer"
+          loading="eager"
+        ></iframe>
+        <div class="player-fallback-action">
+          <span>若播放器未顯示，請改用新視窗播放。</span>
+          <a class="ghost-action" href="${escapeHtml(video.embed_url)}" target="_blank" rel="noreferrer">開啟播放器</a>
+        </div>
+      </div>
+    `;
   }
 
   return `
