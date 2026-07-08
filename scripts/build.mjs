@@ -87,7 +87,6 @@ function pageShell({ title, description, path, body, image = "/assets/brands/yeq
       <a class="brand" href="/"><img src="/assets/brands/yequyingcheng/logo.svg" alt="夜趣影城" /></a>
       <nav class="navlinks" aria-label="主要導覽">
         <a href="/">首頁</a>
-        <a href="/sitemap.xml">Sitemap</a>
       </nav>
     </header>
     ${body}

@@ -101,6 +101,16 @@ function playableEmbedUrl(url) {
   return url;
 }
 
+function renderHeroAd() {
+  return `
+    <div class="hero-ad">
+      <span>Advertisement</span>
+      <strong>首頁主視覺廣告位</strong>
+      <small>可放橫幅、輪播或廣告商素材</small>
+    </div>
+  `;
+}
+
 function render() {
   const videos = filteredVideos();
   const featured = state.selected || videos[0] || mockVideos[0];
@@ -112,7 +122,6 @@ function render() {
       <nav class="navlinks" aria-label="主要導覽">
         <a href="#featured">精選</a>
         <a href="#library">片庫</a>
-        <a href="/sitemap.xml">Sitemap</a>
       </nav>
       <label class="search">
         <span>搜尋</span>
@@ -136,7 +145,7 @@ function render() {
           </div>
         </div>
         <div class="hero-player" aria-label="影片播放器">
-          ${renderPlayer(featured)}
+          ${renderHeroAd()}
         </div>
       </section>
 

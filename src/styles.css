@@ -213,6 +213,39 @@ h1 {
     linear-gradient(135deg, rgba(74, 14, 14, 0.72), rgba(19, 19, 19, 0.98));
 }
 
+.hero-ad {
+  min-height: 520px;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 12px;
+  padding: 32px;
+  text-align: center;
+  color: var(--muted);
+  background:
+    radial-gradient(circle at 50% 35%, rgba(212, 175, 55, 0.16), transparent 18rem),
+    linear-gradient(135deg, rgba(42, 34, 18, 0.9), rgba(12, 12, 12, 0.98));
+}
+
+.hero-ad span {
+  color: rgba(242, 202, 80, 0.62);
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.hero-ad strong {
+  color: var(--gold-soft);
+  font-size: clamp(26px, 3vw, 44px);
+}
+
+.hero-ad small {
+  color: rgba(208, 197, 175, 0.78);
+  font-size: 15px;
+}
+
 .player-shell {
   min-height: 520px;
   height: 100%;
