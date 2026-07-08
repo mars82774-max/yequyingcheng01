@@ -53,6 +53,20 @@ function escapeHtml(value) {
     .replaceAll('"', "&quot;");
 }
 
+function renderPlayer(video) {
+  if (video.embed_url) {
+    return `<iframe src="${video.embed_url}" title="${escapeHtml(video.title)}" allowfullscreen loading="lazy"></iframe>`;
+  }
+
+  return `
+    <div class="player-empty">
+      <img src="${brand.icon}" alt="" />
+      <strong>影片即將上架</strong>
+      <span>此影片正在整理中，請先瀏覽其他精選內容。</span>
+    </div>
+  `;
+}
+
 function render() {
   const videos = filteredVideos();
   const featured = state.selected || videos[0] || mockVideos[0];
@@ -61,38 +75,38 @@ function render() {
       <a class="brand" href="/" aria-label="${brand.name}">
         <img src="${brand.logo}" alt="${brand.name}" />
       </a>
-      <nav class="navlinks" aria-label="主選單">
+      <nav class="navlinks" aria-label="主要導覽">
         <a href="#featured">精選</a>
         <a href="#library">片庫</a>
         <a href="/sitemap.xml">Sitemap</a>
       </nav>
       <label class="search">
         <span>搜尋</span>
-        <input id="searchInput" type="search" placeholder="輸入標題或標籤" value="${escapeHtml(state.query)}" />
+        <input id="searchInput" type="search" placeholder="輸入片名、分類或標籤" value="${escapeHtml(state.query)}" />
       </label>
     </header>
 
     <main>
       <section id="featured" class="hero">
         <div class="hero-copy">
-          <p class="eyebrow">Nocturne Selection</p>
+          <p class="eyebrow">Yequ Featured</p>
           <h1>${escapeHtml(featured.title)}</h1>
-          <p class="summary">夜趣影城使用 mockVideos 作為資料來源，保留分類、標籤、影片詳情頁與 iframe 播放入口，並可部署到 Cloudflare Pages。</p>
+          <p class="summary">深夜精選片庫，依分類與標籤整理熱門內容，支援快速搜尋、詳情頁與播放入口。</p>
           <div class="hero-actions">
             <button class="primary-action" data-play="${featured.id}">播放預覽</button>
             <a class="ghost-action" href="${videoPath(featured)}">影片詳情</a>
           </div>
           <div class="meta-row">
-            <span>${escapeHtml(featured.date || "近期更新")}</span>
+            <span>${escapeHtml(featured.date || "未標日期")}</span>
             ${featured.category.map((cat) => `<a href="/category/${encodeURIComponent(cat)}/">${escapeHtml(cat)}</a>`).join("")}
           </div>
         </div>
-        <div class="hero-player" aria-label="播放器預覽">
-          ${featured.embed_url ? `<iframe src="${featured.embed_url}" title="${escapeHtml(featured.title)}" allowfullscreen loading="lazy"></iframe>` : `<div class="player-empty"><img src="${brand.icon}" alt="" /><strong>等待接入播放入口</strong><span>目前使用 mockVideos，不載入真實影片。</span></div>`}
+        <div class="hero-player" aria-label="影片播放器">
+          ${renderPlayer(featured)}
         </div>
       </section>
 
-      <section class="ad-placeholder" aria-label="預留版位">
+      <section class="ad-placeholder" aria-label="廣告版位">
         <span>Reserved Placement</span>
         <strong>970 x 90</strong>
       </section>
@@ -105,7 +119,7 @@ function render() {
         <div class="section-heading">
           <div>
             <p class="eyebrow">Library</p>
-            <h2>夜趣片庫</h2>
+            <h2>最新片庫</h2>
           </div>
           <span>${videos.length} 部影片</span>
         </div>
@@ -114,24 +128,24 @@ function render() {
             <article class="video-card" data-video="${video.id}">
               <a class="thumb" href="${videoPath(video)}">
                 ${cardArt(video, index)}
-                <span class="play-dot">▶</span>
+                <span class="play-dot">播放</span>
               </a>
               <div class="card-body">
                 <h3><a href="${videoPath(video)}">${escapeHtml(video.title)}</a></h3>
-                <p>${escapeHtml(video.date || "未標日期")} · ${escapeHtml(video.provider || "source")}</p>
+                <p>${escapeHtml(video.date || "未標日期")} · ${escapeHtml(video.provider || "精選")}</p>
                 <div class="chips">
                   ${video.tags.slice(0, 4).map((tag) => `<a href="${tagPath(tag)}">${escapeHtml(tag)}</a>`).join("")}
                 </div>
               </div>
             </article>
-          `).join("") || `<p class="empty">沒有符合條件的影片。</p>`}
+          `).join("") || `<p class="empty">沒有符合條件的影片，請換一個標籤或關鍵字。</p>`}
         </div>
       </section>
     </main>
 
     <footer>
       <img src="${brand.icon}" alt="" />
-      <span>${brand.name} · Cloudflare Pages Ready</span>
+      <span>${brand.name}</span>
     </footer>
   `;
 

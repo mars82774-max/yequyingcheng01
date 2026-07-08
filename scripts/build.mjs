@@ -77,7 +77,7 @@ function pageShell({ title, description, path, body, image = "/assets/brands/yeq
   <body>
     <header class="topbar">
       <a class="brand" href="/"><img src="/assets/brands/yequyingcheng/logo.svg" alt="夜趣影城" /></a>
-      <nav class="navlinks" aria-label="SEO 導覽">
+      <nav class="navlinks" aria-label="主要導覽">
         <a href="/">首頁</a>
         <a href="/sitemap.xml">Sitemap</a>
       </nav>
@@ -85,7 +85,7 @@ function pageShell({ title, description, path, body, image = "/assets/brands/yeq
     ${body}
     <footer>
       <img src="/assets/brands/yequyingcheng/logo-icon.svg" alt="" />
-      <span>夜趣影城 · SEO Static Page</span>
+      <span>夜趣影城</span>
     </footer>
   </body>
 </html>`;
@@ -93,7 +93,7 @@ function pageShell({ title, description, path, body, image = "/assets/brands/yeq
 
 function renderVideoPage(video) {
   const path = `/video/${encodeURIComponent(video.id)}/`;
-  const description = `${video.title}。分類：${video.category.join("、")}。標籤：${video.tags.join("、")}。`;
+  const description = `${video.title}，分類包含 ${video.category.join("、")}，標籤包含 ${video.tags.join("、")}。`;
   const jsonLd = {
     "@context": "https://schema.org",
     "@type": "VideoObject",
@@ -102,10 +102,10 @@ function renderVideoPage(video) {
     thumbnailUrl: video.cover || "/assets/brands/yequyingcheng/og-image.png",
     uploadDate: video.date,
     embedUrl: video.embed_url || undefined,
-    contentUrl: video.source_url || undefined,
     genre: video.category,
     keywords: video.tags.join(", ")
   };
+
   return pageShell({
     title: `${video.title} | 夜趣影城`,
     description,
@@ -125,9 +125,8 @@ function renderVideoPage(video) {
           ${video.tags.map((tag) => `<a href="/tag/${encodeURIComponent(tag)}/">${escapeHtml(tag)}</a>`).join("")}
         </div>
         <div class="hero-player seo-player">
-          ${video.embed_url ? `<iframe src="${video.embed_url}" title="${escapeHtml(video.title)}" allowfullscreen loading="lazy"></iframe>` : `<div class="player-empty"><img src="/assets/brands/yequyingcheng/logo-icon.svg" alt="" /><strong>等待接入播放入口</strong><span>目前使用 mockVideos，不載入真實影片。</span></div>`}
+          ${video.embed_url ? `<iframe src="${video.embed_url}" title="${escapeHtml(video.title)}" allowfullscreen loading="lazy"></iframe>` : `<div class="player-empty"><img src="/assets/brands/yequyingcheng/logo-icon.svg" alt="" /><strong>影片即將上架</strong><span>此影片正在整理中，請先瀏覽其他精選內容。</span></div>`}
         </div>
-        <p><a class="ghost-action" href="${video.source_url}" rel="noreferrer">查看來源頁</a></p>
       </article>
     </main>`
   });
@@ -160,7 +159,7 @@ function renderSeoCard(video, index) {
   return `<article class="video-card">
     <a class="thumb" href="/video/${encodeURIComponent(video.id)}/">
       <div class="poster-fallback ${["gold", "sangria", "violet", "smoke"][index % 4]}"><span>${String(index + 1).padStart(2, "0")}</span></div>
-      <span class="play-dot">▶</span>
+      <span class="play-dot">播放</span>
     </a>
     <div class="card-body">
       <h3><a href="/video/${encodeURIComponent(video.id)}/">${escapeHtml(video.title)}</a></h3>
