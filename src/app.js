@@ -8,7 +8,7 @@ const brand = {
   icon: "/assets/brands/yequyingcheng/logo-icon.svg"
 };
 
-const HOT_RANKING_HOSTS = ["yeying", "yeguyingcheng", "yesakura", "sakura"];
+const HOT_RANKING_HOSTS = ["yeying", "yeyingcheng", "ye-ying", "yesakura", "sakura"];
 
 let state = {
   query: "",
@@ -145,7 +145,8 @@ function renderFeaturedVideosPanel(videos) {
 function isHotRankingSite() {
   const hostname = window.location.hostname.toLowerCase();
   const params = new URLSearchParams(window.location.search);
-  return params.get("siteMode") === "hot" || HOT_RANKING_HOSTS.some((host) => hostname.includes(host));
+  const siteMode = String(params.get("siteMode") || "").toLowerCase();
+  return siteMode === "hot" || HOT_RANKING_HOSTS.some((host) => hostname.includes(host));
 }
 
 function rankingDomain() {
@@ -303,13 +304,19 @@ function renderVideoCard(video, index, extra = "") {
       </a>
       <div class="card-body">
         <h3 class="video-title"><a href="${videoPath(video)}">${escapeHtml(video.title)}</a></h3>
-        <p>${escapeHtml(video.date || "未標日期")} · ${escapeHtml(video.provider || "精選")}</p>
+        <p>${escapeHtml(videoCardMeta(video))}</p>
         <div class="chips">
           ${publicTags(video).slice(0, 4).map((tag) => `<a href="${tagPath(tag)}">${escapeHtml(tag)}</a>`).join("")}
         </div>
       </div>
     </article>
   `;
+}
+
+function videoCardMeta(video) {
+  const date = video?.date || "未標日期";
+  const label = video?.type === "iframe" ? "影音" : video?.category?.[0] || "精選";
+  return `${date} · ${label}`;
 }
 
 function render() {

@@ -235,10 +235,16 @@ function renderSeoCard(video, index) {
     </a>
     <div class="card-body">
       <h3><a href="/video/${encodeURIComponent(video.id)}/">${escapeHtml(video.title)}</a></h3>
-      <p>${escapeHtml(video.date)} · ${escapeHtml(video.provider)}</p>
+      <p>${escapeHtml(videoCardMeta(video))}</p>
       <div class="chips">${publicTags(video).slice(0, 4).map((tag) => `<a href="/tag/${encodeURIComponent(tag)}/">${escapeHtml(tag)}</a>`).join("")}</div>
     </div>
   </article>`;
+}
+
+function videoCardMeta(video) {
+  const date = video?.date || "未標日期";
+  const label = video?.type === "iframe" ? "影音" : video?.category?.[0] || "精選";
+  return `${date} · ${label}`;
 }
 
 function renderRobots() {
