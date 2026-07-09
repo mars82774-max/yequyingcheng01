@@ -9,6 +9,7 @@ const brand = {
 };
 
 const HOT_RANKING_HOSTS = ["yeying", "yeyingcheng", "ye-ying", "yesakura", "sakura"];
+const NATIVE_AD_INTERVAL = 6;
 const INVALID_AD_TITLES = new Set([
   "原生廣告卡",
   "側欄廣告",
@@ -123,6 +124,27 @@ function activeAds(slotKeys, viewport) {
     if (!allowedSlots.has(slot.slotKey)) return [];
     return activeAdItems(slot, viewport).map((item) => ({ ...item, slotKey: slot.slotKey, intervalMs: slot.intervalMs }));
   });
+}
+
+function activeAdSlotItems(slotKey) {
+  const viewport = window.matchMedia("(max-width: 760px)").matches ? "mobile" : "desktop";
+  const slot = state.ads.find((adSlot) => adSlot.slotKey === slotKey);
+  if (!slot) return [];
+  return activeAdItems(slot, viewport).map((item) => ({ ...item, slotKey: slot.slotKey }));
+}
+
+function renderNativeAdCard(item) {
+  if (!item) return "";
+  return renderNativeAdItem(item, { className: "ad-native" });
+}
+
+function shouldInsertNativeAd(index, nativeItems) {
+  return nativeItems.length > 0 && index > 0 && index % NATIVE_AD_INTERVAL === 0;
+}
+
+function nativeAdForInsert(index, nativeItems) {
+  const insertIndex = Math.floor(index / NATIVE_AD_INTERVAL) - 1;
+  return nativeItems[insertIndex % nativeItems.length];
 }
 
 function renderHeroAdCarousel() {
@@ -381,7 +403,7 @@ function render() {
   const leaderboard = renderAdSlot("ad_desktop_leaderboard", { className: "ad-leaderboard" });
   const heroFeatured = renderFeaturedVideosPanel(videos);
   const inlineAd = renderAdSlot("ad_inline_banner", { className: "ad-inline" });
-  const nativeAd = renderAdSlot("ad_native_card", { className: "ad-native", native: true });
+  const nativeItems = activeAdSlotItems("ad_native_card");
   const hotRankingModules = isHotRankingSite() ? renderHotRankingModules(videos) : "";
 
   app.innerHTML = `
@@ -428,7 +450,7 @@ function render() {
         </div>
         <div class="video-grid">
           ${videos.map((video, index) => `
-            ${index === 2 ? nativeAd : ""}
+            ${shouldInsertNativeAd(index, nativeItems) ? renderNativeAdCard(nativeAdForInsert(index, nativeItems)) : ""}
             ${renderVideoCard(video, index)}
           `).join("") || `<p class="empty">沒有符合條件的影片，請換一個標籤或關鍵字。</p>`}
         </div>
