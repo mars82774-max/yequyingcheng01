@@ -540,6 +540,22 @@ h1 {
   background: var(--surface-2);
 }
 
+.ad-native-label {
+  position: absolute;
+  top: 9px;
+  left: 9px;
+  z-index: 2;
+  padding: 3px 8px;
+  color: rgba(255, 255, 255, 0.9);
+  background: rgba(8, 8, 8, 0.52);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  backdrop-filter: blur(8px);
+}
+
 .ad-native-thumb img,
 .ad-native-thumb video,
 .ad-native-thumb .ad-empty {
@@ -568,6 +584,26 @@ h1 {
   color: var(--muted);
   font-size: 13px;
   line-height: 1.45;
+}
+
+.ad-native-cta {
+  width: fit-content;
+  min-height: 36px;
+  margin-top: 4px;
+  padding: 8px 13px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #160f04;
+  background: linear-gradient(135deg, var(--gold), #f1c85b);
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.ad-native:hover .ad-native-cta {
+  filter: brightness(1.05);
 }
 
 .player-shell {

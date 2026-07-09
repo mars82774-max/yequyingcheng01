@@ -155,6 +155,7 @@ function AdminAdItemEditor(slotKey, item) {
   grid.append(
     createItemInput(slotKey, item.id, "title", "前台標題", item.title, "text", "今晚解鎖專屬互動劇情"),
     createItemInput(slotKey, item.id, "subtitle", "前台副標", item.subtitle, "text", "登入領取限定福利"),
+    createItemInput(slotKey, item.id, "ctaText", "CTA 按鈕文字", item.ctaText, "text", "立即體驗"),
     createItemInput(slotKey, item.id, "sort", "素材排序", Number(item.sort || 0), "number"),
     createItemInput(slotKey, item.id, "imageUrl", "素材 URL", item.imageUrl, "url", "https://example.com/ad.jpg 或 https://example.com/ad.mp4", "wide"),
     createItemInput(slotKey, item.id, "linkUrl", "跳轉連結", item.linkUrl, "url", "https://example.com/", "wide"),
@@ -299,6 +300,7 @@ function addAdItem(slotKey) {
     enabled: true,
     title: "",
     subtitle: "",
+    ctaText: "",
     imageUrl: "",
     linkUrl: "",
     target: "_blank",

@@ -10,6 +10,7 @@ const brand = {
 
 const HOT_RANKING_HOSTS = ["yeying", "yeyingcheng", "ye-ying", "yesakura", "sakura"];
 const NATIVE_AD_INTERVAL = 6;
+const DEFAULT_NATIVE_CTA = "立即體驗";
 const INVALID_AD_TITLES = new Set([
   "原生廣告卡",
   "側欄廣告",
@@ -275,14 +276,16 @@ function renderAdItem(ad, options = {}) {
 function renderNativeAdItem(ad, options = {}) {
   const title = displayAdTitle(ad);
   const subtitle = cleanAdText(ad.subtitle);
+  const ctaText = cleanAdText(ad.ctaText) || DEFAULT_NATIVE_CTA;
   const body = `
     <div class="ad-native-thumb">
       ${renderAdMedia(ad)}
-      <span class="ad-label">廣告</span>
+      <span class="ad-native-label">廣告</span>
     </div>
     <div class="ad-native-body">
       <strong>${escapeHtml(title)}</strong>
       ${subtitle ? `<p>${escapeHtml(subtitle)}</p>` : ""}
+      <span class="ad-native-cta">${escapeHtml(ctaText)}</span>
     </div>
   `;
   const link = ad.linkUrl || ad.link;

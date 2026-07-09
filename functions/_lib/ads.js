@@ -17,6 +17,7 @@ const defaultItemsBySlot = {
       enabled: true,
       title: "Mobile top test ad",
       subtitle: "",
+      ctaText: "",
       imageUrl: "/assets/brands/yequyingcheng/og-image.png",
       linkUrl: "/",
       target: "_self",
@@ -33,6 +34,7 @@ const defaultItemsBySlot = {
       enabled: true,
       title: "Desktop leaderboard test ad 1",
       subtitle: "",
+      ctaText: "",
       imageUrl: "/assets/brands/yequyingcheng/og-image.png",
       linkUrl: "/",
       target: "_self",
@@ -47,6 +49,7 @@ const defaultItemsBySlot = {
       enabled: true,
       title: "Desktop leaderboard test ad 2",
       subtitle: "",
+      ctaText: "",
       imageUrl: "/assets/brands/yequyingcheng/logo.png",
       linkUrl: "/",
       target: "_self",
@@ -76,6 +79,7 @@ export const defaultAds = slotDefaults.map(([slotKey, title, enabled, desktopEna
       enabled,
       title,
       subtitle: "",
+      ctaText: "",
       imageUrl: "",
       linkUrl: "",
       target: "_blank",
@@ -127,6 +131,7 @@ export function sanitizeAdItem(item, fallbackSlot = {}, index = 0) {
     enabled: item?.enabled === undefined ? true : Boolean(item.enabled),
     title: String(item?.title ?? ""),
     subtitle: String(item?.subtitle || ""),
+    ctaText: String(item?.ctaText || ""),
     imageUrl: String(item?.imageUrl || item?.image || ""),
     linkUrl: String(item?.linkUrl || item?.link || ""),
     target: item?.target === "_self" ? "_self" : "_blank",
@@ -145,6 +150,7 @@ function legacySlotToItem(slot, fallback) {
     enabled: slot?.enabled === undefined ? true : Boolean(slot.enabled),
     title: slot?.title || fallback.title,
     subtitle: slot?.subtitle || fallbackItem.subtitle || "",
+    ctaText: slot?.ctaText || fallbackItem.ctaText || "",
     imageUrl: slot?.imageUrl || slot?.image || fallbackItem.imageUrl || "",
     linkUrl: slot?.linkUrl || slot?.link || fallbackItem.linkUrl || "",
     target: slot?.target || fallbackItem.target || "_blank",
@@ -157,7 +163,7 @@ function legacySlotToItem(slot, fallback) {
 }
 
 function hasLegacyItemFields(slot) {
-  return ["image", "link", "imageUrl", "linkUrl", "subtitle", "target", "startAt", "endAt"].some((field) =>
+  return ["image", "link", "imageUrl", "linkUrl", "subtitle", "ctaText", "target", "startAt", "endAt"].some((field) =>
     Object.prototype.hasOwnProperty.call(slot || {}, field)
   );
 }
