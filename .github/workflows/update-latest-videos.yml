@@ -1,24 +1,23 @@
-name: Backfill Videos
+name: Update Latest Videos
 
 on:
   workflow_dispatch:
   schedule:
-    - cron: "*/10 * * * *"
+    - cron: "10 16 * * *"
 
 permissions:
   contents: write
 
 concurrency:
-  group: backfill-videos
+  group: update-latest-videos
   cancel-in-progress: false
 
 jobs:
-  backfill-videos:
+  update-latest-videos:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      CRAWL_MODE: backfill
-      MAX_OLD_ITEMS: 24
+      CRAWL_MODE: latest
 
     steps:
       - name: Checkout repository
@@ -34,7 +33,7 @@ jobs:
       - name: Install dependencies
         run: npm ci || npm install
 
-      - name: Backfill old videos
+      - name: Update latest videos
         run: npm run update:videos
 
       - name: Build

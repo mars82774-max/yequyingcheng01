@@ -12,40 +12,56 @@ const maxBackfillPages = Number(process.env.MAX_BACKFILL_PAGES || 0);
 const maxNewItems = Number(process.env.MAX_NEW_ITEMS || 0);
 const maxOldItems = Number(process.env.MAX_OLD_ITEMS || 24);
 const delayMs = Number(process.env.CRAWL_DELAY_MS || 800);
+const crawlMode = (process.env.CRAWL_MODE || "backfill").toLowerCase();
 
 const state = await readState();
-const latestResult = await crawlLatest(mockVideos);
 const now = new Date().toISOString();
 
-state.latestLastRunAt = now;
-state.latestLastNewCount = latestResult.items.length;
+if (crawlMode === "latest") {
+  const latestResult = await crawlLatest(mockVideos);
 
-if (latestResult.items.length > 0) {
-  const merged = dedupeVideos([...latestResult.items, ...mockVideos]);
-  state.totalVideos = merged.length;
-  await writeVideos(merged);
-  await writeState(state);
-  console.log(`Updated latest videos: new=${latestResult.items.length} total=${merged.length}`);
+  state.latestLastRunAt = now;
+  state.latestLastNewCount = latestResult.items.length;
+
+  if (latestResult.items.length > 0) {
+    const merged = dedupeVideos([...latestResult.items, ...mockVideos]);
+    state.totalVideos = merged.length;
+    updateOldestState(state, merged);
+    await writeVideos(merged);
+    await writeState(state);
+    console.log(`Updated latest videos: new=${latestResult.items.length} total=${merged.length}`);
+    process.exit(0);
+  }
+
+  console.log(`No new latest videos. pages=${latestResult.pagesDone} checked=${latestResult.fetchedCount} duplicates=${latestResult.duplicateCount}`);
   process.exit(0);
 }
 
-console.log("No new latest videos. Starting backfill.");
+if (crawlMode !== "backfill") {
+  throw new Error(`Unsupported CRAWL_MODE: ${crawlMode}. Use "backfill" or "latest".`);
+}
 
 const backfillResult = await crawlBackfill(mockVideos, state);
 state.lastBackfillRunAt = now;
 state.backfillPage = backfillResult.nextPage;
 state.backfillCursor = backfillResult.nextCursor;
+state.lastBackfillFetchedCount = backfillResult.fetchedCount;
+state.lastBackfillDuplicateCount = backfillResult.duplicateCount;
+state.lastBackfillAddedCount = backfillResult.items.length;
 
 if (backfillResult.items.length > 0) {
   const merged = dedupeVideos([...mockVideos, ...backfillResult.items]);
   state.totalVideos = merged.length;
+  updateOldestState(state, merged);
   await writeVideos(merged);
   await writeState(state);
+  logBackfillSummary(backfillResult, state);
   console.log(`Backfilled old videos: added=${backfillResult.items.length} total=${merged.length}`);
   process.exit(0);
 }
 
-console.log("No video updates");
+logBackfillSummary(backfillResult, state);
+console.log("No old video updates");
 
 async function crawlLatest(currentVideos) {
   const known = createDedupeIndex(currentVideos);
@@ -53,6 +69,8 @@ async function crawlLatest(currentVideos) {
   const seenPages = new Set();
   let pageUrl = baseUrl;
   let pagesDone = 0;
+  let fetchedCount = 0;
+  let duplicateCount = 0;
 
   while (pageUrl && !seenPages.has(pageUrl) && (maxLatestPages <= 0 || pagesDone < maxLatestPages)) {
     seenPages.add(pageUrl);
@@ -60,14 +78,17 @@ async function crawlLatest(currentVideos) {
     pagesDone += 1;
 
     for (const entryUrl of parseEntryUrls(html, pageUrl)) {
+      fetchedCount += 1;
       const stub = { source_url: normalizeEntryUrl(entryUrl), id: entryIdFromUrl(entryUrl) };
       if (hasDuplicate(known, stub)) {
-        return { items, pagesDone };
+        duplicateCount += 1;
+        return { items, pagesDone, fetchedCount, duplicateCount };
       }
 
       const item = await parseVideoPage(entryUrl);
       if (hasDuplicate(known, item)) {
-        return { items, pagesDone };
+        duplicateCount += 1;
+        return { items, pagesDone, fetchedCount, duplicateCount };
       }
 
       items.push(item);
@@ -75,7 +96,7 @@ async function crawlLatest(currentVideos) {
       console.log(`[latest] ${item.id} ${item.date} ${item.title.slice(0, 42)}`);
 
       if (maxNewItems > 0 && items.length >= maxNewItems) {
-        return { items, pagesDone };
+        return { items, pagesDone, fetchedCount, duplicateCount };
       }
       await sleep(delayMs);
     }
@@ -84,17 +105,22 @@ async function crawlLatest(currentVideos) {
     await sleep(delayMs);
   }
 
-  return { items, pagesDone };
+  return { items, pagesDone, fetchedCount, duplicateCount };
 }
 
 async function crawlBackfill(currentVideos, crawlState) {
   const known = createDedupeIndex(currentVideos);
   const items = [];
   const seenPages = new Set();
-  let pageUrl = crawlState.backfillCursor || "";
+  const oldestUrl = oldestSourceUrl(currentVideos);
+  let pageUrl = crawlState.backfillCursor || oldestUrl || "";
   let currentPage = Number(crawlState.backfillPage || 2);
 
-  if (!pageUrl) {
+  if (!crawlState.backfillCursor && oldestUrl) {
+    const oldestHtml = await fetchText(oldestUrl);
+    pageUrl = parseNextUrl(oldestHtml, oldestUrl) || oldestUrl;
+    await sleep(delayMs);
+  } else if (!pageUrl) {
     const firstPageHtml = await fetchText(baseUrl);
     pageUrl = parseNextUrl(firstPageHtml, baseUrl);
     currentPage = 2;
@@ -104,6 +130,8 @@ async function crawlBackfill(currentVideos, crawlState) {
   let pagesDone = 0;
   let nextCursor = pageUrl;
   let nextPage = currentPage;
+  let fetchedCount = 0;
+  let duplicateCount = 0;
 
   while (pageUrl && !seenPages.has(pageUrl) && (maxBackfillPages <= 0 || pagesDone < maxBackfillPages)) {
     seenPages.add(pageUrl);
@@ -111,11 +139,18 @@ async function crawlBackfill(currentVideos, crawlState) {
     pagesDone += 1;
 
     for (const entryUrl of parseEntryUrls(html, pageUrl)) {
+      fetchedCount += 1;
       const stub = { source_url: normalizeEntryUrl(entryUrl), id: entryIdFromUrl(entryUrl) };
-      if (hasDuplicate(known, stub)) continue;
+      if (hasDuplicate(known, stub)) {
+        duplicateCount += 1;
+        continue;
+      }
 
       const item = await parseVideoPage(entryUrl);
-      if (hasDuplicate(known, item)) continue;
+      if (hasDuplicate(known, item)) {
+        duplicateCount += 1;
+        continue;
+      }
 
       items.push(item);
       addToIndex(known, item);
@@ -124,7 +159,7 @@ async function crawlBackfill(currentVideos, crawlState) {
       if (maxOldItems > 0 && items.length >= maxOldItems) {
         nextCursor = parseNextUrl(html, pageUrl) || pageUrl;
         nextPage = currentPage + 1;
-        return { items, nextCursor, nextPage, pagesDone };
+        return { items, nextCursor, nextPage, pagesDone, fetchedCount, duplicateCount };
       }
       await sleep(delayMs);
     }
@@ -136,7 +171,41 @@ async function crawlBackfill(currentVideos, crawlState) {
     await sleep(delayMs);
   }
 
-  return { items, nextCursor: nextCursor || "", nextPage, pagesDone };
+  return { items, nextCursor: nextCursor || "", nextPage, pagesDone, fetchedCount, duplicateCount };
+}
+
+function logBackfillSummary(result, crawlState) {
+  console.log(`Backfill page: ${crawlState.backfillPage}`);
+  console.log(`Fetched count: ${result.fetchedCount}`);
+  console.log(`Duplicate count: ${result.duplicateCount}`);
+  console.log(`Added old video count: ${result.items.length}`);
+  console.log(`Next backfill cursor: ${crawlState.backfillCursor || ""}`);
+  console.log(`Next backfill page: ${crawlState.backfillPage}`);
+}
+
+function updateOldestState(crawlState, videos) {
+  const oldest = oldestVideo(videos);
+  crawlState.oldestVideoId = oldest?.id || "";
+  crawlState.oldestVideoDate = oldest?.date || "";
+}
+
+function oldestVideo(videos) {
+  return [...videos]
+    .filter((video) => video?.id || video?.date)
+    .sort((a, b) => compareVideoAge(a, b))
+    .at(-1);
+}
+
+function oldestSourceUrl(videos) {
+  const oldest = oldestVideo(videos);
+  return oldest?.source_url || oldest?.sourceUrl || "";
+}
+
+function compareVideoAge(a, b) {
+  const dateA = Date.parse(a?.date || a?.publishedAt || a?.createdAt || "");
+  const dateB = Date.parse(b?.date || b?.publishedAt || b?.createdAt || "");
+  if (Number.isFinite(dateA) && Number.isFinite(dateB) && dateA !== dateB) return dateB - dateA;
+  return String(b?.id || "").localeCompare(String(a?.id || ""));
 }
 
 function dedupeVideos(videos) {
@@ -203,8 +272,13 @@ async function readState() {
     latestLastNewCount: 0,
     backfillPage: 2,
     backfillCursor: "",
+    oldestVideoId: "",
+    oldestVideoDate: "",
     totalVideos: mockVideos.length,
-    lastBackfillRunAt: ""
+    lastBackfillRunAt: "",
+    lastBackfillFetchedCount: 0,
+    lastBackfillDuplicateCount: 0,
+    lastBackfillAddedCount: 0
   };
 
   try {
