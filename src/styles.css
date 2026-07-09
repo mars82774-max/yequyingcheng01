@@ -310,6 +310,7 @@ h1 {
   position: relative;
   display: grid;
   min-height: 96px;
+  height: 96px;
   overflow: hidden;
   color: var(--text);
   border: 1px solid rgba(212, 175, 55, 0.22);
@@ -373,12 +374,23 @@ h1 {
   margin-bottom: 24px;
 }
 
+.ad-leaderboard {
+  height: 112px;
+}
+
+.ad-inline,
+[data-ad-slot] .ad-slot {
+  height: 120px;
+}
+
 .ad-mobile-top {
   display: none;
+  height: 86px;
 }
 
 .ad-hero {
   min-height: 100%;
+  height: 100%;
 }
 
 .ad-carousel {
@@ -456,8 +468,65 @@ h1 {
   background: var(--gold);
 }
 
+.ad-carousel-arrow {
+  position: absolute;
+  top: 50%;
+  z-index: 3;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
+  background: rgba(8, 8, 8, 0.4);
+  transform: translateY(-50%);
+  opacity: 0.65;
+}
+
+.ad-carousel-arrow:hover {
+  opacity: 1;
+}
+
+.ad-carousel-arrow.prev {
+  left: 12px;
+}
+
+.ad-carousel-arrow.next {
+  right: 12px;
+}
+
+.ad-carousel-arrow::before {
+  content: "";
+  display: block;
+  width: 9px;
+  height: 9px;
+  margin: auto;
+  border-top: 2px solid var(--text);
+  border-left: 2px solid var(--text);
+}
+
+.ad-carousel-arrow.prev::before {
+  transform: rotate(-45deg);
+}
+
+.ad-carousel-arrow.next::before {
+  transform: rotate(135deg);
+}
+
+.ad-media-error img {
+  display: none;
+}
+
+.ad-media-error::after {
+  content: "Advertisement unavailable";
+  min-height: inherit;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+}
+
 .ad-native {
   min-height: 100%;
+  height: 100%;
 }
 
 .ad-native strong {
@@ -755,6 +824,7 @@ footer img {
 
   .ad-mobile-top {
     display: grid;
+    height: 86px;
     margin-bottom: 18px;
   }
 

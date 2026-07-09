@@ -1,4 +1,4 @@
-import { adsConfig, isAdActive, normalizeAds, SITE_CODE } from "./adsConfig.js";
+import { activeAdItems, adsConfig, normalizeAds, SITE_CODE } from "./adsConfig.js";
 import { mockVideos } from "./mockVideos.js";
 
 const brand = {
@@ -86,24 +86,27 @@ function escapeHtml(value) {
 
 function renderAdSlot(slotKey, options = {}) {
   const viewport = window.matchMedia("(max-width: 760px)").matches ? "mobile" : "desktop";
-  const ads = activeAds([slotKey], viewport);
-  if (!ads.length) return "";
+  const slot = state.ads.find((adSlot) => adSlot.slotKey === slotKey);
+  if (!slot) return "";
+  const items = activeAdItems(slot, viewport);
+  if (!items.length) return "";
 
-  return ads.map((ad) => renderAd(ad, options)).join("");
+  return renderAdSlotComponent(slot, items, options);
 }
 
 function activeAds(slotKeys, viewport) {
   const allowedSlots = new Set(slotKeys);
-  return state.ads
-    .filter((ad) => allowedSlots.has(ad.slotKey) && isAdActive(ad, viewport))
-    .sort((a, b) => Number(a.sort || 0) - Number(b.sort || 0));
+  return state.ads.flatMap((slot) => {
+    if (!allowedSlots.has(slot.slotKey)) return [];
+    return activeAdItems(slot, viewport).map((item) => ({ ...item, slotKey: slot.slotKey, intervalMs: slot.intervalMs }));
+  });
 }
 
 function renderHeroAdCarousel() {
   const viewport = window.matchMedia("(max-width: 760px)").matches ? "mobile" : "desktop";
   const ads = activeAds(["ad_hero_side", "ad_mobile_top", "ad_desktop_leaderboard"], viewport);
   if (!ads.length) return "";
-  if (ads.length === 1) return renderAd(ads[0], { className: "ad-hero" });
+  if (ads.length === 1) return renderAdItem(ads[0], { className: "ad-hero" });
 
   return `
     <div class="ad-slot ad-hero ad-carousel" data-carousel>
@@ -137,17 +140,42 @@ function renderFeaturedVideosPanel(videos) {
   `;
 }
 
-function renderAd(ad, options = {}) {
+function renderAdSlotComponent(slot, items, options = {}) {
+  if (items.length === 1 || !slot.carousel) {
+    return renderAdItem({ ...items[0], slotKey: slot.slotKey }, options);
+  }
+
+  return renderAdCarousel(slot, items, options);
+}
+
+function renderAdCarousel(slot, items, options = {}) {
+  return `
+    <div class="ad-slot ${options.className || ""} ad-carousel" data-carousel data-interval="${Number(slot.intervalMs || 5000)}" data-slot="${escapeHtml(slot.slotKey)}">
+      <span class="ad-label">Advertisement</span>
+      <div class="ad-carousel-track">
+        ${items.map((item, index) => renderAdSlide({ ...item, slotKey: slot.slotKey }, index === 0)).join("")}
+      </div>
+      <button class="ad-carousel-arrow prev" type="button" data-carousel-prev aria-label="Previous ad"></button>
+      <button class="ad-carousel-arrow next" type="button" data-carousel-next aria-label="Next ad"></button>
+      <div class="ad-carousel-dots" aria-label="Ad carousel controls">
+        ${items.map((item, index) => `<button type="button" class="${index === 0 ? "active" : ""}" data-carousel-dot="${index}" aria-label="Show ad ${index + 1}"></button>`).join("")}
+      </div>
+    </div>
+  `;
+}
+
+function renderAdItem(ad, options = {}) {
   const label = options.native ? "AD" : "Advertisement";
   const body = `
     <span class="ad-label">${label}</span>
     ${renderAdMedia(ad)}
     ${options.native ? `<strong>${escapeHtml(ad.title)}</strong>` : ""}
   `;
-  if (!ad.link) {
+  const link = ad.linkUrl || ad.link;
+  if (!link) {
     return `<div class="ad-slot ${options.className || ""}" data-slot="${escapeHtml(ad.slotKey)}">${body}</div>`;
   }
-  return `<a class="ad-slot ${options.className || ""}" data-slot="${escapeHtml(ad.slotKey)}" href="${escapeHtml(ad.link)}" target="${escapeHtml(ad.target || "_blank")}" rel="noreferrer">${body}</a>`;
+  return `<a class="ad-slot ${options.className || ""}" data-slot="${escapeHtml(ad.slotKey)}" href="${escapeHtml(link)}" target="${escapeHtml(ad.target || "_blank")}" rel="noreferrer">${body}</a>`;
 }
 
 function renderAdSlide(ad, active) {
@@ -158,20 +186,22 @@ function renderAdSlide(ad, active) {
     </div>
   `;
   const className = `ad-slide ${active ? "active" : ""}`;
-  if (!ad.link) {
+  const link = ad.linkUrl || ad.link;
+  if (!link) {
     return `<div class="${className}" data-slot="${escapeHtml(ad.slotKey)}">${body}</div>`;
   }
-  return `<a class="${className}" data-slot="${escapeHtml(ad.slotKey)}" href="${escapeHtml(ad.link)}" target="${escapeHtml(ad.target || "_blank")}" rel="noreferrer">${body}</a>`;
+  return `<a class="${className}" data-slot="${escapeHtml(ad.slotKey)}" href="${escapeHtml(link)}" target="${escapeHtml(ad.target || "_blank")}" rel="noreferrer">${body}</a>`;
 }
 
 function renderAdMedia(ad) {
-  if (!ad.image) {
+  const image = ad.imageUrl || ad.image;
+  if (!image) {
     return `<div class="ad-empty"><strong>${escapeHtml(ad.title)}</strong><span>廣告素材待設定</span></div>`;
   }
-  if (isVideoAsset(ad.image)) {
-    return `<video src="${escapeHtml(ad.image)}" autoplay muted loop playsinline preload="metadata"></video>`;
+  if (isVideoAsset(image)) {
+    return `<video src="${escapeHtml(image)}" autoplay muted loop playsinline preload="metadata" onerror="this.closest('.ad-slide,.ad-slot')?.classList.add('ad-media-error')"></video>`;
   }
-  return `<img src="${escapeHtml(ad.image)}" alt="${escapeHtml(ad.title)}" loading="lazy" />`;
+  return `<img src="${escapeHtml(image)}" alt="${escapeHtml(ad.title)}" loading="lazy" onerror="this.closest('.ad-slide,.ad-slot')?.classList.add('ad-media-error')" />`;
 }
 
 function isVideoAsset(url) {
@@ -329,15 +359,27 @@ function startAdCarousels() {
     const dots = [...carousel.querySelectorAll("[data-carousel-dot]")];
     if (slides.length < 2) return;
     let index = Math.max(0, slides.findIndex((slide) => slide.classList.contains("active")));
+    let paused = false;
+    const intervalMs = Math.max(1000, Number(carousel.dataset.interval || 5000));
 
     const show = (nextIndex) => {
-      index = nextIndex % slides.length;
+      index = (nextIndex + slides.length) % slides.length;
       slides.forEach((slide, slideIndex) => slide.classList.toggle("active", slideIndex === index));
       dots.forEach((dot, dotIndex) => dot.classList.toggle("active", dotIndex === index));
     };
 
     dots.forEach((dot, dotIndex) => dot.addEventListener("click", () => show(dotIndex)));
-    window.setInterval(() => show(index + 1), 5000);
+    carousel.querySelector("[data-carousel-prev]")?.addEventListener("click", () => show(index - 1));
+    carousel.querySelector("[data-carousel-next]")?.addEventListener("click", () => show(index + 1));
+    carousel.addEventListener("mouseenter", () => {
+      paused = true;
+    });
+    carousel.addEventListener("mouseleave", () => {
+      paused = false;
+    });
+    window.setInterval(() => {
+      if (!paused) show(index + 1);
+    }, intervalMs);
   });
 }
 

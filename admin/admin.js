@@ -159,7 +159,7 @@ function AdminAdItemEditor(slotKey, item) {
   grid.append(
     createItemInput(slotKey, item.id, "title", "素材標題", item.title),
     createItemInput(slotKey, item.id, "sort", "素材排序", Number(item.sort || 0), "number"),
-    createItemInput(slotKey, item.id, "imageUrl", "廣告圖片 URL", item.imageUrl, "url", "https://example.com/ad.jpg", "wide"),
+    createItemInput(slotKey, item.id, "imageUrl", "素材 URL", item.imageUrl, "url", "https://example.com/ad.jpg 或 https://example.com/ad.mp4", "wide"),
     createItemInput(slotKey, item.id, "linkUrl", "跳轉連結", item.linkUrl, "url", "https://example.com/", "wide"),
     createItemSelect(slotKey, item.id, "target", "開啟方式", item.target),
     createItemInput(slotKey, item.id, "startAt", "開始時間", toLocalDatetime(item.startAt), "datetime-local"),
