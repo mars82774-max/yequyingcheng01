@@ -42,8 +42,8 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          if [ -n "$(git status --porcelain)" ]; then
-            git add .
+          if [ -n "$(git status --porcelain -- src/mockVideos.js src/videoCrawlState.json)" ]; then
+            git add src/mockVideos.js src/videoCrawlState.json
             git commit -m "update video list"
             git push
           else
