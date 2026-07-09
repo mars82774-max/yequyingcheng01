@@ -3,7 +3,7 @@ name: Update Videos
 on:
   workflow_dispatch:
   schedule:
-    - cron: "0 * * * *"
+    - cron: "*/10 * * * *"
 
 permissions:
   contents: write
@@ -43,7 +43,7 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
           if [ -n "$(git status --porcelain -- src/mockVideos.js src/videoCrawlState.json)" ]; then
-            git add src/mockVideos.js src/videoCrawlState.json
+            git add -- src/mockVideos.js src/videoCrawlState.json
             git commit -m "update video list"
             git push
           else
