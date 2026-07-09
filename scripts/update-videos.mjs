@@ -344,7 +344,7 @@ function parseEntryUrls(html, pageUrl) {
     .filter((url) => {
       try {
         const parsed = new URL(url);
-        return parsed.searchParams.has("entry") && !parsed.searchParams.has("m") && !parsed.searchParams.has("d") && !parsed.searchParams.has("y");
+        return parsed.searchParams.has("entry");
       } catch {
         return false;
       }
