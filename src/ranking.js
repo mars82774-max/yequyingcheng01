@@ -40,6 +40,12 @@ export function getDailyJitter(video, domain = "", date = new Date()) {
   return hashString(seed) % 9;
 }
 
+export function getHourlyJitter(video, domain = "", date = new Date()) {
+  const hour = toHourKey(date);
+  const seed = `${domain}|${video?.id || video?.slug || video?.title || ""}|${hour}`;
+  return hashString(seed) % 17;
+}
+
 export function getHotScore(video, options = {}) {
   const now = options.now || new Date();
   const domain = options.domain || "";
@@ -63,6 +69,29 @@ export function rankVideos(videos, mode = "daily", options = {}) {
 
   const sorted = scored.sort((a, b) => compareRankedVideos(a, b, mode));
   return sorted.map((item) => item.video);
+}
+
+export function rankFeaturedVideos(videos, options = {}) {
+  const now = options.now || new Date();
+  const domain = options.domain || "";
+  const limit = Number(options.limit || 5);
+  const pool = buildFeaturedPool(videos, now, Math.max(limit, 1));
+
+  return pool
+    .map((video) => ({
+      video,
+      timestamp: getVideoTimestamp(video),
+      hotScore: getHotScore(video, { ...options, now, domain }),
+      freshnessBoost: getFreshnessBoost(video, now),
+      hourlyJitter: getHourlyJitter(video, domain, now)
+    }))
+    .sort((a, b) => {
+      const scoreA = a.hotScore + a.freshnessBoost + a.hourlyJitter;
+      const scoreB = b.hotScore + b.freshnessBoost + b.hourlyJitter;
+      return scoreB - scoreA || b.timestamp - a.timestamp || fallbackCompare(a, b);
+    })
+    .slice(0, limit)
+    .map((item) => item.video);
 }
 
 function compareRankedVideos(a, b, mode) {
@@ -89,6 +118,34 @@ function fallbackCompare(a, b) {
 
 function toDateKey(date) {
   return new Date(date).toISOString().slice(0, 10);
+}
+
+function toHourKey(date) {
+  return new Date(date).toISOString().slice(0, 13);
+}
+
+function buildFeaturedPool(videos, now, limit) {
+  const source = Array.isArray(videos) ? videos : [];
+  const sevenDays = source.filter((video) => isWithinDays(video, now, 7));
+  if (sevenDays.length >= limit) return sevenDays;
+
+  const seen = new Set(sevenDays.map(videoKey));
+  const thirtyDays = source.filter((video) => isWithinDays(video, now, 30) && !seen.has(videoKey(video)));
+  const combined = [...sevenDays, ...thirtyDays];
+  if (combined.length >= limit) return combined;
+
+  const combinedSeen = new Set(combined.map(videoKey));
+  return [...combined, ...source.filter((video) => !combinedSeen.has(videoKey(video)))];
+}
+
+function isWithinDays(video, now, days) {
+  const timestamp = getVideoTimestamp(video);
+  if (!timestamp) return false;
+  return now.getTime() - timestamp <= days * 24 * 60 * 60 * 1000;
+}
+
+function videoKey(video) {
+  return String(video?.id || video?.source_url || video?.sourceUrl || video?.slug || video?.title || "");
 }
 
 function hashString(value) {

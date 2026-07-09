@@ -1,90 +1,228 @@
-import { writeFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { mockVideos } from "../src/mockVideos.js";
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
-const output = join(root, "src", "mockVideos.js");
+const videosOutput = join(root, "src", "mockVideos.js");
+const stateOutput = join(root, "src", "videoCrawlState.json");
 const baseUrl = "https://j-av.com/video/index.php";
-const maxPages = Number(process.env.MAX_PAGES || 0);
+const maxLatestPages = Number(process.env.MAX_LATEST_PAGES || 3);
+const maxBackfillPages = Number(process.env.MAX_BACKFILL_PAGES || 0);
 const maxNewItems = Number(process.env.MAX_NEW_ITEMS || 0);
 const maxOldItems = Number(process.env.MAX_OLD_ITEMS || 24);
 const delayMs = Number(process.env.CRAWL_DELAY_MS || 800);
 
-const knownIds = new Set(mockVideos.map((video) => video.id));
-const newestExistingId = mockVideos[0]?.id || "";
-const newHeadItems = [];
-const oldTailItems = [];
-const seenPages = new Set();
-let pageUrl = baseUrl;
-let pagesDone = 0;
-let knownHits = 0;
-let reachedNewestExisting = false;
+const state = await readState();
+const latestResult = await crawlLatest(mockVideos);
+const now = new Date().toISOString();
 
-while (pageUrl && !seenPages.has(pageUrl) && (maxPages <= 0 || pagesDone < maxPages)) {
-  seenPages.add(pageUrl);
-  const html = await fetchText(pageUrl);
-  pagesDone += 1;
+state.latestLastRunAt = now;
+state.latestLastNewCount = latestResult.items.length;
 
-  for (const entryUrl of parseEntryUrls(html, pageUrl)) {
-    const id = entryIdFromUrl(entryUrl);
-    if (!id) continue;
-    if (knownIds.has(id)) {
-      knownHits += 1;
-      if (id === newestExistingId) reachedNewestExisting = true;
-      if (newHeadItems.length > 0 && reachedNewestExisting) {
-        pageUrl = "";
-        break;
+if (latestResult.items.length > 0) {
+  const merged = dedupeVideos([...latestResult.items, ...mockVideos]);
+  state.totalVideos = merged.length;
+  await writeVideos(merged);
+  await writeState(state);
+  console.log(`Updated latest videos: new=${latestResult.items.length} total=${merged.length}`);
+  process.exit(0);
+}
+
+console.log("No new latest videos. Starting backfill.");
+
+const backfillResult = await crawlBackfill(mockVideos, state);
+state.lastBackfillRunAt = now;
+state.backfillPage = backfillResult.nextPage;
+state.backfillCursor = backfillResult.nextCursor;
+
+if (backfillResult.items.length > 0) {
+  const merged = dedupeVideos([...mockVideos, ...backfillResult.items]);
+  state.totalVideos = merged.length;
+  await writeVideos(merged);
+  await writeState(state);
+  console.log(`Backfilled old videos: added=${backfillResult.items.length} total=${merged.length}`);
+  process.exit(0);
+}
+
+console.log("No video updates");
+
+async function crawlLatest(currentVideos) {
+  const known = createDedupeIndex(currentVideos);
+  const items = [];
+  const seenPages = new Set();
+  let pageUrl = baseUrl;
+  let pagesDone = 0;
+
+  while (pageUrl && !seenPages.has(pageUrl) && (maxLatestPages <= 0 || pagesDone < maxLatestPages)) {
+    seenPages.add(pageUrl);
+    const html = await fetchText(pageUrl);
+    pagesDone += 1;
+
+    for (const entryUrl of parseEntryUrls(html, pageUrl)) {
+      const stub = { source_url: normalizeEntryUrl(entryUrl), id: entryIdFromUrl(entryUrl) };
+      if (hasDuplicate(known, stub)) {
+        return { items, pagesDone };
       }
-      continue;
+
+      const item = await parseVideoPage(entryUrl);
+      if (hasDuplicate(known, item)) {
+        return { items, pagesDone };
+      }
+
+      items.push(item);
+      addToIndex(known, item);
+      console.log(`[latest] ${item.id} ${item.date} ${item.title.slice(0, 42)}`);
+
+      if (maxNewItems > 0 && items.length >= maxNewItems) {
+        return { items, pagesDone };
+      }
+      await sleep(delayMs);
     }
 
-    const item = await parseVideoPage(entryUrl);
-    if (!reachedNewestExisting) {
-      newHeadItems.push(item);
-    } else {
-      oldTailItems.push(item);
-    }
-    knownIds.add(item.id);
-    const mode = reachedNewestExisting ? "old" : "new";
-    console.log(`[${mode}] ${item.id} ${item.date} ${item.title.slice(0, 42)}`);
-    if (!reachedNewestExisting && maxNewItems > 0 && newHeadItems.length >= maxNewItems) {
-      pageUrl = "";
-      break;
-    }
-    if (reachedNewestExisting && maxOldItems > 0 && oldTailItems.length >= maxOldItems) {
-      pageUrl = "";
-      break;
-    }
+    pageUrl = parseNextUrl(html, pageUrl);
     await sleep(delayMs);
   }
 
-  if (!pageUrl) break;
-  pageUrl = parseNextUrl(html, pageUrl);
-  await sleep(delayMs);
+  return { items, pagesDone };
 }
 
-if (newHeadItems.length || oldTailItems.length) {
-  const merged = mergeVideos(newHeadItems, mockVideos, oldTailItems);
-  await writeVideos(merged);
+async function crawlBackfill(currentVideos, crawlState) {
+  const known = createDedupeIndex(currentVideos);
+  const items = [];
+  const seenPages = new Set();
+  let pageUrl = crawlState.backfillCursor || "";
+  let currentPage = Number(crawlState.backfillPage || 2);
+
+  if (!pageUrl) {
+    const firstPageHtml = await fetchText(baseUrl);
+    pageUrl = parseNextUrl(firstPageHtml, baseUrl);
+    currentPage = 2;
+    await sleep(delayMs);
+  }
+
+  let pagesDone = 0;
+  let nextCursor = pageUrl;
+  let nextPage = currentPage;
+
+  while (pageUrl && !seenPages.has(pageUrl) && (maxBackfillPages <= 0 || pagesDone < maxBackfillPages)) {
+    seenPages.add(pageUrl);
+    const html = await fetchText(pageUrl);
+    pagesDone += 1;
+
+    for (const entryUrl of parseEntryUrls(html, pageUrl)) {
+      const stub = { source_url: normalizeEntryUrl(entryUrl), id: entryIdFromUrl(entryUrl) };
+      if (hasDuplicate(known, stub)) continue;
+
+      const item = await parseVideoPage(entryUrl);
+      if (hasDuplicate(known, item)) continue;
+
+      items.push(item);
+      addToIndex(known, item);
+      console.log(`[backfill] ${item.id} ${item.date} ${item.title.slice(0, 42)}`);
+
+      if (maxOldItems > 0 && items.length >= maxOldItems) {
+        nextCursor = parseNextUrl(html, pageUrl) || pageUrl;
+        nextPage = currentPage + 1;
+        return { items, nextCursor, nextPage, pagesDone };
+      }
+      await sleep(delayMs);
+    }
+
+    nextCursor = parseNextUrl(html, pageUrl);
+    nextPage = currentPage + 1;
+    pageUrl = nextCursor;
+    currentPage = nextPage;
+    await sleep(delayMs);
+  }
+
+  return { items, nextCursor: nextCursor || "", nextPage, pagesDone };
 }
 
-console.log(
-  `pages=${pagesDone} new_head=${newHeadItems.length} old_tail=${oldTailItems.length} known_hits=${knownHits} total=${newHeadItems.length + mockVideos.length + oldTailItems.length}`
-);
+function dedupeVideos(videos) {
+  const index = createEmptyDedupeIndex();
+  const result = [];
 
-function mergeVideos(head, current, tail) {
-  const seen = new Set();
-  return [...head, ...current, ...tail].filter((video) => {
-    if (!video?.id || seen.has(video.id)) return false;
-    seen.add(video.id);
-    return true;
-  });
+  for (const video of videos) {
+    if (!video || hasDuplicate(index, video)) continue;
+    result.push(video);
+    addToIndex(index, video);
+  }
+
+  return result;
+}
+
+function createDedupeIndex(videos) {
+  const index = createEmptyDedupeIndex();
+  for (const video of videos) addToIndex(index, video);
+  return index;
+}
+
+function createEmptyDedupeIndex() {
+  return {
+    sourceUrls: new Set(),
+    titleDurations: new Set(),
+    titleThumbnails: new Set(),
+    ids: new Set()
+  };
+}
+
+function hasDuplicate(index, video) {
+  const keys = dedupeKeys(video);
+  return (
+    (keys.sourceUrl && index.sourceUrls.has(keys.sourceUrl)) ||
+    (keys.titleDuration && index.titleDurations.has(keys.titleDuration)) ||
+    (keys.titleThumbnail && index.titleThumbnails.has(keys.titleThumbnail)) ||
+    (keys.id && index.ids.has(keys.id))
+  );
+}
+
+function addToIndex(index, video) {
+  const keys = dedupeKeys(video);
+  if (keys.sourceUrl) index.sourceUrls.add(keys.sourceUrl);
+  if (keys.titleDuration) index.titleDurations.add(keys.titleDuration);
+  if (keys.titleThumbnail) index.titleThumbnails.add(keys.titleThumbnail);
+  if (keys.id) index.ids.add(keys.id);
+}
+
+function dedupeKeys(video) {
+  const title = normalizeKey(video?.title);
+  const duration = normalizeKey(video?.duration);
+  const thumbnail = normalizeKey(video?.thumbnail || video?.cover || video?.cover_source);
+  return {
+    sourceUrl: normalizeSourceUrl(video?.sourceUrl || video?.source_url),
+    titleDuration: title && duration ? `${title}|${duration}` : "",
+    titleThumbnail: title && thumbnail ? `${title}|${thumbnail}` : "",
+    id: normalizeKey(video?.id)
+  };
+}
+
+async function readState() {
+  const fallback = {
+    latestLastRunAt: "",
+    latestLastNewCount: 0,
+    backfillPage: 2,
+    backfillCursor: "",
+    totalVideos: mockVideos.length,
+    lastBackfillRunAt: ""
+  };
+
+  try {
+    const existing = JSON.parse(await readFile(stateOutput, "utf-8"));
+    return { ...fallback, ...existing };
+  } catch (error) {
+    if (error?.code !== "ENOENT") throw error;
+    return fallback;
+  }
+}
+
+async function writeState(nextState) {
+  await writeFile(stateOutput, `${JSON.stringify(nextState, null, 2)}\n`, "utf-8");
 }
 
 async function writeVideos(items) {
   const source = `export const mockVideos = ${JSON.stringify(items, null, 2)};\n`;
-  await writeFile(output, source, "utf-8");
+  await writeFile(videosOutput, source, "utf-8");
 }
 
 async function fetchText(url) {
@@ -108,17 +246,18 @@ async function parseVideoPage(url) {
       entryIdFromUrl(url)
   );
   const date = cleanText(findFirst(html, /<div[^>]+class=["'][^"']*blog_date[^"']*["'][^>]*>([\s\S]*?)<\/div>/i));
+  const id = entryIdFromUrl(url);
 
   return {
-    id: entryIdFromUrl(url),
-    slug: entryIdFromUrl(url),
+    id,
+    slug: id,
     title,
     source_url: normalizeEntryUrl(url),
     embed_url: embedUrl,
     cover_source: cover,
     cover,
     date,
-    category: ["影音", "中文有碼"],
+    category: defaultList("category"),
     tags: inferTags(title, cover),
     type: "iframe",
     provider: "j-av"
@@ -144,11 +283,13 @@ function parseNextUrl(html, pageUrl) {
   const links = [...html.matchAll(/<a[^>]+href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi)];
   for (const [, href, label] of links) {
     const text = cleanText(label).toLowerCase();
-    if (href.includes("entry=") && (text.includes("下一頁") || text.includes("next"))) {
+    if (href.includes("entry=") && (text.includes("next") || text.includes("older") || text.includes("下一") || text.includes("下頁"))) {
       return normalizeUrl(decodeHtml(href), pageUrl);
     }
   }
-  return "";
+
+  const entryUrls = parseEntryUrls(html, pageUrl);
+  return entryUrls.at(-1) || "";
 }
 
 function findFirst(html, pattern, predicate = () => true) {
@@ -182,6 +323,11 @@ function normalizeEntryUrl(url) {
   return entry.startsWith("entry") ? `${baseUrl}?entry=${encodeURIComponent(entry)}` : normalizeUrl(url, baseUrl);
 }
 
+function normalizeSourceUrl(url) {
+  const normalized = normalizeUrl(url || "", baseUrl);
+  return entryIdFromUrl(normalized) ? normalizeEntryUrl(normalized) : normalized;
+}
+
 function entryIdFromUrl(url) {
   try {
     return new URL(url, baseUrl).searchParams.get("entry") || "";
@@ -199,16 +345,30 @@ function coverFromEmbed(url) {
 }
 
 function inferTags(title, cover) {
-  const tags = ["影音", "中文有碼"];
-  const keywords = ["人妻", "熟女", "巨乳", "美乳", "素人", "女教師", "護士", "制服", "學生", "偶像", "NTR"];
-  for (const keyword of keywords) {
-    if (title.includes(keyword)) tags.push(keyword);
+  const tags = defaultList("tags");
+  const code = findCode(title) || findCode(cover);
+  if (code) {
+    tags.push(code);
+    tags.push(code.split("-")[0]);
   }
   return dedupe(tags);
 }
 
+function defaultList(field) {
+  const values = mockVideos[0]?.[field];
+  return Array.isArray(values) ? [...values.slice(0, 2)] : [];
+}
+
+function findCode(value = "") {
+  return String(value).match(/[a-z]{2,12}-?\d{2,5}/i)?.[0]?.toUpperCase().replace(/([A-Z]+)(\d+)$/, "$1-$2") || "";
+}
+
 function dedupe(values) {
   return [...new Set(values.filter(Boolean))];
+}
+
+function normalizeKey(value = "") {
+  return String(value).replace(/\s+/g, " ").trim().toLowerCase();
 }
 
 function cleanText(value = "") {

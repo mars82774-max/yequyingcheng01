@@ -1,6 +1,6 @@
 import { activeAdItems, adsConfig, normalizeAds, SITE_CODE } from "./adsConfig.js";
 import { mockVideos } from "./mockVideos.js";
-import { rankVideos } from "./ranking.js";
+import { rankFeaturedVideos, rankVideos } from "./ranking.js";
 
 const brand = {
   name: "夜趣影城",
@@ -124,7 +124,10 @@ function renderHeroAdCarousel() {
 }
 
 function renderFeaturedVideosPanel(videos) {
-  const featuredVideos = (videos.length ? videos : mockVideos).slice(0, 5);
+  const featuredVideos = rankFeaturedVideos(videos.length ? videos : mockVideos, {
+    domain: rankingDomain(),
+    limit: 5
+  });
   return `
     <aside class="featured-panel featured-carousel" aria-label="精選影片輪播" data-video-carousel>
       <div class="featured-carousel-track">
