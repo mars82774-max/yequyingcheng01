@@ -1,11 +1,14 @@
 import { activeAdItems, adsConfig, normalizeAds, SITE_CODE } from "./adsConfig.js";
 import { mockVideos } from "./mockVideos.js";
+import { rankVideos } from "./ranking.js";
 
 const brand = {
   name: "夜趣影城",
   logo: "/assets/brands/yequyingcheng/logo.svg",
   icon: "/assets/brands/yequyingcheng/logo-icon.svg"
 };
+
+const HOT_RANKING_HOSTS = ["yeying", "yeguyingcheng", "yesakura", "sakura"];
 
 let state = {
   query: "",
@@ -139,6 +142,54 @@ function renderFeaturedVideosPanel(videos) {
   `;
 }
 
+function isHotRankingSite() {
+  const hostname = window.location.hostname.toLowerCase();
+  const params = new URLSearchParams(window.location.search);
+  return params.get("siteMode") === "hot" || HOT_RANKING_HOSTS.some((host) => hostname.includes(host));
+}
+
+function rankingDomain() {
+  return window.location.hostname || "local";
+}
+
+function renderHotRankingModules(videos) {
+  const sections = [
+    ["今日熱門", "daily"],
+    ["本週排行", "weekly"],
+    ["最新熱播", "latestHot"],
+    ["最多人觀看", "mostViewed"],
+    ["精選推薦", "featured"]
+  ];
+
+  return `
+    <section class="ranking-board" aria-label="熱門排行榜">
+      ${sections
+        .map(([title, mode]) => {
+          const ranked = rankVideos(videos, mode, { domain: rankingDomain() }).slice(0, 5);
+          return renderRankingSection(title, ranked);
+        })
+        .join("")}
+    </section>
+  `;
+}
+
+function renderRankingSection(title, videos) {
+  if (!videos.length) return "";
+  return `
+    <section class="ranking-section">
+      <div class="section-heading compact">
+        <div>
+          <p class="eyebrow">Ranking</p>
+          <h2>${escapeHtml(title)}</h2>
+        </div>
+      </div>
+      <div class="ranking-grid">
+        ${videos.map((video, index) => renderVideoCard(video, index, `<span class="rank-badge">${index + 1}</span>`)).join("")}
+      </div>
+    </section>
+  `;
+}
+
 function renderAdSlotComponent(slot, items, options = {}) {
   if (items.length === 1 || !slot.carousel) {
     return renderAdItem({ ...items[0], slotKey: slot.slotKey }, options);
@@ -242,6 +293,25 @@ function playableEmbedUrl(url) {
   return url;
 }
 
+function renderVideoCard(video, index, extra = "") {
+  return `
+    <article class="video-card" data-video="${video.id}">
+      <a class="thumb" href="${videoPath(video)}">
+        ${cardArt(video, index)}
+        ${extra}
+        <span class="play-dot">播放</span>
+      </a>
+      <div class="card-body">
+        <h3 class="video-title"><a href="${videoPath(video)}">${escapeHtml(video.title)}</a></h3>
+        <p>${escapeHtml(video.date || "未標日期")} · ${escapeHtml(video.provider || "精選")}</p>
+        <div class="chips">
+          ${publicTags(video).slice(0, 4).map((tag) => `<a href="${tagPath(tag)}">${escapeHtml(tag)}</a>`).join("")}
+        </div>
+      </div>
+    </article>
+  `;
+}
+
 function render() {
   const videos = filteredVideos();
   const featured = state.selected || videos[0] || mockVideos[0];
@@ -250,6 +320,7 @@ function render() {
   const heroFeatured = renderFeaturedVideosPanel(videos);
   const inlineAd = renderAdSlot("ad_inline_banner", { className: "ad-inline" });
   const nativeAd = renderAdSlot("ad_native_card", { className: "ad-native", native: true });
+  const hotRankingModules = isHotRankingSite() ? renderHotRankingModules(videos) : "";
 
   app.innerHTML = `
     <header class="topbar">
@@ -279,6 +350,7 @@ function render() {
       </section>
 
       ${inlineAd}
+      ${hotRankingModules}
 
       <section id="tags" class="tag-strip" aria-label="標籤篩選">
         ${uniqueTags().map((tag) => `<button class="${tag === state.tag ? "active" : ""}" data-tag="${escapeHtml(tag)}">${escapeHtml(tag)}</button>`).join("")}
@@ -295,19 +367,7 @@ function render() {
         <div class="video-grid">
           ${videos.map((video, index) => `
             ${index === 2 ? nativeAd : ""}
-            <article class="video-card" data-video="${video.id}">
-              <a class="thumb" href="${videoPath(video)}">
-                ${cardArt(video, index)}
-                <span class="play-dot">播放</span>
-              </a>
-              <div class="card-body">
-                <h3 class="video-title"><a href="${videoPath(video)}">${escapeHtml(video.title)}</a></h3>
-                <p>${escapeHtml(video.date || "未標日期")} · ${escapeHtml(video.provider || "精選")}</p>
-                <div class="chips">
-                  ${publicTags(video).slice(0, 4).map((tag) => `<a href="${tagPath(tag)}">${escapeHtml(tag)}</a>`).join("")}
-                </div>
-              </div>
-            </article>
+            ${renderVideoCard(video, index)}
           `).join("") || `<p class="empty">沒有符合條件的影片，請換一個標籤或關鍵字。</p>`}
         </div>
       </section>
