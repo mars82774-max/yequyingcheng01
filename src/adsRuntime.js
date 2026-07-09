@@ -1,5 +1,26 @@
 import { activeAdItems, adsConfig, normalizeAds, SITE_CODE } from "./adsConfig.js";
 
+const INVALID_AD_TITLES = new Set([
+  "原生廣告卡",
+  "側欄廣告",
+  "頂部手機廣告",
+  "桌機橫幅廣告",
+  "內容中段橫幅廣告",
+  "播放器下方廣告",
+  "ad_native_card",
+  "ad_sidebar",
+  "ad_mobile_top",
+  "ad_desktop_leaderboard",
+  "ad_inline_banner",
+  "ad_player_below",
+  "Native card ad",
+  "Sidebar ad",
+  "Mobile top ad",
+  "Desktop leaderboard ad",
+  "Inline banner ad",
+  "Player below ad"
+]);
+
 const slots = [...document.querySelectorAll("[data-ad-slot]")];
 
 if (slots.length) {
@@ -60,7 +81,7 @@ function renderAdItem(ad) {
 }
 
 function renderAdSlide(ad, active) {
-  const body = `${renderAdMedia(ad)}<div class="ad-slide-caption"><strong>${escapeHtml(ad.title)}</strong></div>`;
+  const body = `${renderAdMedia(ad)}<div class="ad-slide-caption"><strong>${escapeHtml(displayAdTitle(ad))}</strong></div>`;
   const className = `ad-slide ${active ? "active" : ""}`;
   const link = ad.linkUrl || ad.link;
   if (!link) return `<div class="${className}" data-slot="${escapeHtml(ad.slotKey)}">${body}</div>`;
@@ -70,12 +91,22 @@ function renderAdSlide(ad, active) {
 function renderAdMedia(ad) {
   const image = ad.imageUrl || ad.image;
   if (!image) {
-    return `<div class="ad-empty"><strong>${escapeHtml(ad.title)}</strong><span>Ad creative not configured</span></div>`;
+    return `<div class="ad-empty"><strong>${escapeHtml(displayAdTitle(ad))}</strong><span>Ad creative not configured</span></div>`;
   }
   if (/\.(mp4|webm|ogg)(?:[?#].*)?$/i.test(String(image))) {
     return `<video src="${escapeHtml(image)}" autoplay muted loop playsinline preload="metadata" onerror="this.closest('.ad-slide,.ad-slot')?.classList.add('ad-media-error')"></video>`;
   }
-  return `<img src="${escapeHtml(image)}" alt="${escapeHtml(ad.title)}" loading="lazy" onerror="this.closest('.ad-slide,.ad-slot')?.classList.add('ad-media-error')" />`;
+  return `<img src="${escapeHtml(image)}" alt="${escapeHtml(displayAdTitle(ad))}" loading="lazy" onerror="this.closest('.ad-slide,.ad-slot')?.classList.add('ad-media-error')" />`;
+}
+
+function displayAdTitle(ad) {
+  const title = cleanAdText(ad?.title);
+  if (!title || INVALID_AD_TITLES.has(title)) return "推薦內容";
+  return title;
+}
+
+function cleanAdText(value = "") {
+  return String(value || "").replace(/\s+/g, " ").trim();
 }
 
 function startAdCarousels() {

@@ -127,7 +127,7 @@ function AdminAdSlotEditor(slot) {
   if (!slot.items.length) {
     const empty = document.createElement("p");
     empty.className = "empty-items";
-    empty.textContent = "目前沒有廣告素材，點擊「新增廣告」加入圖片或影片 URL。";
+    empty.textContent = "目前沒有廣告素材，請新增一筆並填入素材 URL。";
     items.appendChild(empty);
   }
 
@@ -147,17 +147,14 @@ function AdminAdItemEditor(slotKey, item) {
   title.textContent = item.title || item.id;
   const actions = document.createElement("div");
   actions.className = "item-actions";
-  actions.append(
-    createMoveButton(slotKey, item.id, -1, "上移"),
-    createMoveButton(slotKey, item.id, 1, "下移"),
-    createDeleteButton(slotKey, item.id)
-  );
+  actions.append(createMoveButton(slotKey, item.id, -1, "上移"), createMoveButton(slotKey, item.id, 1, "下移"), createDeleteButton(slotKey, item.id));
   head.append(title, actions);
 
   const grid = document.createElement("div");
   grid.className = "form-grid";
   grid.append(
-    createItemInput(slotKey, item.id, "title", "素材標題", item.title),
+    createItemInput(slotKey, item.id, "title", "前台標題", item.title, "text", "今晚解鎖專屬互動劇情"),
+    createItemInput(slotKey, item.id, "subtitle", "前台副標", item.subtitle, "text", "登入領取限定福利"),
     createItemInput(slotKey, item.id, "sort", "素材排序", Number(item.sort || 0), "number"),
     createItemInput(slotKey, item.id, "imageUrl", "素材 URL", item.imageUrl, "url", "https://example.com/ad.jpg 或 https://example.com/ad.mp4", "wide"),
     createItemInput(slotKey, item.id, "linkUrl", "跳轉連結", item.linkUrl, "url", "https://example.com/", "wide"),
@@ -207,7 +204,7 @@ function createItemSelect(slotKey, itemId, field, labelText, value) {
   select.dataset.field = field;
   [
     ["_blank", "新分頁"],
-    ["_self", "同頁開啟"]
+    ["_self", "同分頁"]
   ].forEach(([optionValue, text]) => {
     const option = document.createElement("option");
     option.value = optionValue;
@@ -229,7 +226,7 @@ function createItemCheckbox(slotKey, itemId, field, labelText, checked, classNam
   return createCheckbox({ slotKey, itemId, field, labelText, checked, className, scope: "item" });
 }
 
-function createCheckbox({ slotKey, itemId = "", field, labelText, checked, className = "" , scope }) {
+function createCheckbox({ slotKey, itemId = "", field, labelText, checked, className = "", scope }) {
   const label = document.createElement("label");
   if (className) label.className = className;
   const input = document.createElement("input");
@@ -300,7 +297,8 @@ function addAdItem(slotKey) {
   slot.items.push({
     id: `${slotKey}_${Date.now()}`,
     enabled: true,
-    title: `廣告素材 ${nextSort}`,
+    title: "",
+    subtitle: "",
     imageUrl: "",
     linkUrl: "",
     target: "_blank",
@@ -347,7 +345,7 @@ async function saveAds() {
   });
 
   if (!response.ok) {
-    setMessage("儲存失敗，請檢查 ADS_KV 綁定。", true);
+    setMessage("儲存失敗，請確認登入狀態與 ADS_KV 綁定。", true);
     return;
   }
 

@@ -16,6 +16,7 @@ const defaultItemsBySlot = {
       id: "ad_mobile_top_001",
       enabled: true,
       title: "Mobile top test ad",
+      subtitle: "",
       imageUrl: "/assets/brands/yequyingcheng/og-image.png",
       linkUrl: "/",
       target: "_self",
@@ -31,6 +32,7 @@ const defaultItemsBySlot = {
       id: "ad_desktop_leaderboard_001",
       enabled: true,
       title: "Desktop leaderboard test ad 1",
+      subtitle: "",
       imageUrl: "/assets/brands/yequyingcheng/og-image.png",
       linkUrl: "/",
       target: "_self",
@@ -44,6 +46,7 @@ const defaultItemsBySlot = {
       id: "ad_desktop_leaderboard_002",
       enabled: true,
       title: "Desktop leaderboard test ad 2",
+      subtitle: "",
       imageUrl: "/assets/brands/yequyingcheng/logo.png",
       linkUrl: "/",
       target: "_self",
@@ -72,6 +75,7 @@ export const adsConfig = slotDefaults.map(([slotKey, title, enabled, desktopEnab
       id: `${slotKey}_001`,
       enabled,
       title,
+      subtitle: "",
       imageUrl: "",
       linkUrl: "",
       target: "_blank",
@@ -117,7 +121,8 @@ export function sanitizeAdItem(item, fallbackSlot = {}, index = 0) {
   return {
     id: String(item?.id || `${fallbackSlot.slotKey || "ad"}_${Date.now()}_${index + 1}`),
     enabled: item?.enabled === undefined ? true : Boolean(item.enabled),
-    title: String(item?.title || fallbackSlot.title || ""),
+    title: String(item?.title ?? ""),
+    subtitle: String(item?.subtitle || ""),
     imageUrl: String(item?.imageUrl || item?.image || ""),
     linkUrl: String(item?.linkUrl || item?.link || ""),
     target: item?.target === "_self" ? "_self" : "_blank",
@@ -158,6 +163,7 @@ function legacySlotToItem(slot, fallback) {
     id: `${slot?.slotKey || slot?.id || fallback.slotKey}_001`,
     enabled: slot?.enabled === undefined ? true : Boolean(slot.enabled),
     title: slot?.title || fallback.title,
+    subtitle: slot?.subtitle || fallbackItem.subtitle || "",
     imageUrl: slot?.imageUrl || slot?.image || fallbackItem.imageUrl || "",
     linkUrl: slot?.linkUrl || slot?.link || fallbackItem.linkUrl || "",
     target: slot?.target || fallbackItem.target || "_blank",
@@ -170,7 +176,7 @@ function legacySlotToItem(slot, fallback) {
 }
 
 function hasLegacyItemFields(slot) {
-  return ["image", "link", "imageUrl", "linkUrl", "target", "startAt", "endAt"].some((field) =>
+  return ["image", "link", "imageUrl", "linkUrl", "subtitle", "target", "startAt", "endAt"].some((field) =>
     Object.prototype.hasOwnProperty.call(slot || {}, field)
   );
 }

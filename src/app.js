@@ -9,6 +9,26 @@ const brand = {
 };
 
 const HOT_RANKING_HOSTS = ["yeying", "yeyingcheng", "ye-ying", "yesakura", "sakura"];
+const INVALID_AD_TITLES = new Set([
+  "原生廣告卡",
+  "側欄廣告",
+  "頂部手機廣告",
+  "桌機橫幅廣告",
+  "內容中段橫幅廣告",
+  "播放器下方廣告",
+  "ad_native_card",
+  "ad_sidebar",
+  "ad_mobile_top",
+  "ad_desktop_leaderboard",
+  "ad_inline_banner",
+  "ad_player_below",
+  "Native card ad",
+  "Sidebar ad",
+  "Mobile top ad",
+  "Desktop leaderboard ad",
+  "Inline banner ad",
+  "Player below ad"
+]);
 
 let state = {
   query: "",
@@ -218,9 +238,30 @@ function renderAdCarousel(slot, items, options = {}) {
 }
 
 function renderAdItem(ad, options = {}) {
+  if (options.native) return renderNativeAdItem(ad, options);
+
   const body = `
     ${renderAdMedia(ad)}
-    ${options.native ? `<strong>${escapeHtml(ad.title)}</strong>` : ""}
+  `;
+  const link = ad.linkUrl || ad.link;
+  if (!link) {
+    return `<div class="ad-slot ${options.className || ""}" data-slot="${escapeHtml(ad.slotKey)}">${body}</div>`;
+  }
+  return `<a class="ad-slot ${options.className || ""}" data-slot="${escapeHtml(ad.slotKey)}" href="${escapeHtml(link)}" target="${escapeHtml(ad.target || "_blank")}" rel="noreferrer">${body}</a>`;
+}
+
+function renderNativeAdItem(ad, options = {}) {
+  const title = displayAdTitle(ad);
+  const subtitle = cleanAdText(ad.subtitle);
+  const body = `
+    <div class="ad-native-thumb">
+      ${renderAdMedia(ad)}
+      <span class="ad-label">廣告</span>
+    </div>
+    <div class="ad-native-body">
+      <strong>${escapeHtml(title)}</strong>
+      ${subtitle ? `<p>${escapeHtml(subtitle)}</p>` : ""}
+    </div>
   `;
   const link = ad.linkUrl || ad.link;
   if (!link) {
@@ -230,10 +271,11 @@ function renderAdItem(ad, options = {}) {
 }
 
 function renderAdSlide(ad, active) {
+  const title = displayAdTitle(ad);
   const body = `
     ${renderAdMedia(ad)}
     <div class="ad-slide-caption">
-      <strong>${escapeHtml(ad.title)}</strong>
+      <strong>${escapeHtml(title)}</strong>
     </div>
   `;
   const className = `ad-slide ${active ? "active" : ""}`;
@@ -247,12 +289,22 @@ function renderAdSlide(ad, active) {
 function renderAdMedia(ad) {
   const image = ad.imageUrl || ad.image;
   if (!image) {
-    return `<div class="ad-empty"><strong>${escapeHtml(ad.title)}</strong><span>廣告素材待設定</span></div>`;
+    return `<div class="ad-empty"><strong>${escapeHtml(displayAdTitle(ad))}</strong><span>廣告素材待設定</span></div>`;
   }
   if (isVideoAsset(image)) {
     return `<video src="${escapeHtml(image)}" autoplay muted loop playsinline preload="metadata" onerror="this.closest('.ad-slide,.ad-slot')?.classList.add('ad-media-error')"></video>`;
   }
-  return `<img src="${escapeHtml(image)}" alt="${escapeHtml(ad.title)}" loading="lazy" onerror="this.closest('.ad-slide,.ad-slot')?.classList.add('ad-media-error')" />`;
+  return `<img src="${escapeHtml(image)}" alt="${escapeHtml(displayAdTitle(ad))}" loading="lazy" onerror="this.closest('.ad-slide,.ad-slot')?.classList.add('ad-media-error')" />`;
+}
+
+function displayAdTitle(ad) {
+  const title = cleanAdText(ad?.title);
+  if (!title || INVALID_AD_TITLES.has(title)) return "推薦內容";
+  return title;
+}
+
+function cleanAdText(value = "") {
+  return String(value || "").replace(/\s+/g, " ").trim();
 }
 
 function isVideoAsset(url) {
