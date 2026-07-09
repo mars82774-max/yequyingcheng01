@@ -1,136 +1,167 @@
 export const SITE_CODE = "yequyingcheng01";
 
-export const adsConfig = [
-  {
-    siteCode: SITE_CODE,
-    slotKey: "ad_mobile_top",
-    enabled: false,
-    title: "頂部手機廣告",
-    image: "",
-    link: "",
-    target: "_blank",
-    desktopEnabled: false,
-    mobileEnabled: true,
-    startAt: "",
-    endAt: "",
-    sort: 1
-  },
-  {
-    siteCode: SITE_CODE,
-    slotKey: "ad_desktop_leaderboard",
-    enabled: false,
-    title: "桌機橫幅廣告",
-    image: "",
-    link: "",
-    target: "_blank",
-    desktopEnabled: true,
-    mobileEnabled: false,
-    startAt: "",
-    endAt: "",
-    sort: 2
-  },
-  {
-    siteCode: SITE_CODE,
-    slotKey: "ad_hero_side",
-    enabled: true,
-    title: "首頁主視覺廣告位",
-    image: "",
-    link: "",
-    target: "_blank",
-    desktopEnabled: true,
-    mobileEnabled: true,
-    startAt: "",
-    endAt: "",
-    sort: 3
-  },
-  {
-    siteCode: SITE_CODE,
-    slotKey: "ad_player_below",
-    enabled: false,
-    title: "播放器下方廣告",
-    image: "",
-    link: "",
-    target: "_blank",
-    desktopEnabled: true,
-    mobileEnabled: true,
-    startAt: "",
-    endAt: "",
-    sort: 4
-  },
-  {
-    siteCode: SITE_CODE,
-    slotKey: "ad_inline_banner",
-    enabled: false,
-    title: "內容中段橫幅廣告",
-    image: "",
-    link: "",
-    target: "_blank",
-    desktopEnabled: true,
-    mobileEnabled: true,
-    startAt: "",
-    endAt: "",
-    sort: 5
-  },
-  {
-    siteCode: SITE_CODE,
-    slotKey: "ad_native_card",
-    enabled: false,
-    title: "原生廣告卡",
-    image: "",
-    link: "",
-    target: "_blank",
-    desktopEnabled: true,
-    mobileEnabled: true,
-    startAt: "",
-    endAt: "",
-    sort: 6
-  },
-  {
-    siteCode: SITE_CODE,
-    slotKey: "ad_sidebar",
-    enabled: false,
-    title: "側欄廣告",
-    image: "",
-    link: "",
-    target: "_blank",
-    desktopEnabled: true,
-    mobileEnabled: false,
-    startAt: "",
-    endAt: "",
-    sort: 7
-  }
+const slotDefaults = [
+  ["ad_mobile_top", "Mobile top ad", true, false, true, 1],
+  ["ad_desktop_leaderboard", "Desktop leaderboard ad", true, true, false, 2],
+  ["ad_hero_side", "Hero side ad", true, true, true, 3],
+  ["ad_player_below", "Player below ad", false, true, true, 4],
+  ["ad_inline_banner", "Inline banner ad", false, true, true, 5],
+  ["ad_native_card", "Native card ad", false, true, true, 6],
+  ["ad_sidebar", "Sidebar ad", false, true, false, 7]
 ];
+
+const defaultItemsBySlot = {
+  ad_mobile_top: [
+    {
+      id: "ad_mobile_top_001",
+      enabled: true,
+      title: "Mobile top test ad",
+      imageUrl: "/assets/brands/yequyingcheng/og-image.png",
+      linkUrl: "/",
+      target: "_self",
+      sort: 1,
+      desktopEnabled: false,
+      mobileEnabled: true,
+      startAt: "",
+      endAt: ""
+    }
+  ],
+  ad_desktop_leaderboard: [
+    {
+      id: "ad_desktop_leaderboard_001",
+      enabled: true,
+      title: "Desktop leaderboard test ad 1",
+      imageUrl: "/assets/brands/yequyingcheng/og-image.png",
+      linkUrl: "/",
+      target: "_self",
+      sort: 1,
+      desktopEnabled: true,
+      mobileEnabled: false,
+      startAt: "",
+      endAt: ""
+    },
+    {
+      id: "ad_desktop_leaderboard_002",
+      enabled: true,
+      title: "Desktop leaderboard test ad 2",
+      imageUrl: "/assets/brands/yequyingcheng/logo.png",
+      linkUrl: "/",
+      target: "_self",
+      sort: 2,
+      desktopEnabled: true,
+      mobileEnabled: false,
+      startAt: "",
+      endAt: ""
+    }
+  ]
+};
+
+export const adsConfig = slotDefaults.map(([slotKey, title, enabled, desktopEnabled, mobileEnabled, sort]) => ({
+  siteCode: SITE_CODE,
+  slotKey,
+  title,
+  enabled,
+  carousel: true,
+  intervalMs: 5000,
+  sort,
+  items: defaultItemsBySlot[slotKey] || [
+    {
+      id: `${slotKey}_001`,
+      enabled,
+      title,
+      imageUrl: "",
+      linkUrl: "",
+      target: "_blank",
+      sort: 1,
+      desktopEnabled,
+      mobileEnabled,
+      startAt: "",
+      endAt: ""
+    }
+  ]
+}));
 
 export function normalizeAds(input) {
   const source = Array.isArray(input) ? input : [];
-  const bySlot = new Map(source.map((item) => [item.slotKey, item]));
+  const bySlot = new Map(source.map((item) => [item?.slotKey, item]).filter(([slotKey]) => slotKey));
   return adsConfig
-    .map((fallback) => sanitizeAd({ ...fallback, ...(bySlot.get(fallback.slotKey) || {}) }))
+    .map((fallback) => sanitizeAdSlot({ ...fallback, ...(bySlot.get(fallback.slotKey) || {}) }))
     .sort((a, b) => Number(a.sort || 0) - Number(b.sort || 0));
 }
 
-export function sanitizeAd(ad) {
+export function sanitizeAdSlot(slot) {
+  const fallback = adsConfig.find((item) => item.slotKey === slot?.slotKey) || adsConfig[0];
+  const legacyItem = legacySlotToItem(slot, fallback);
+  const sourceItems = hasLegacyItemFields(slot) ? [legacyItem] : Array.isArray(slot?.items) ? slot.items : [legacyItem];
+
   return {
-    siteCode: String(ad.siteCode || SITE_CODE),
-    slotKey: String(ad.slotKey || ""),
-    enabled: Boolean(ad.enabled),
-    title: String(ad.title || ""),
-    image: String(ad.image || ""),
-    link: String(ad.link || ""),
-    target: ad.target === "_self" ? "_self" : "_blank",
-    desktopEnabled: Boolean(ad.desktopEnabled),
-    mobileEnabled: Boolean(ad.mobileEnabled),
-    startAt: String(ad.startAt || ""),
-    endAt: String(ad.endAt || ""),
-    sort: Number(ad.sort || 0)
+    siteCode: String(slot?.siteCode || SITE_CODE),
+    slotKey: String(slot?.slotKey || fallback.slotKey),
+    title: String(slot?.title || fallback.title || ""),
+    enabled: Boolean(slot?.enabled),
+    carousel: slot?.carousel === undefined ? true : Boolean(slot.carousel),
+    intervalMs: Math.max(1000, Number(slot?.intervalMs || 5000)),
+    sort: Number(slot?.sort || fallback.sort || 0),
+    items: sourceItems.map((item, index) => sanitizeAdItem(item, fallback, index))
   };
 }
 
-export function isAdActive(ad, viewport = "desktop", now = new Date()) {
-  if (!ad?.enabled) return false;
-  if (viewport === "mobile" && !ad.mobileEnabled) return false;
-  if (viewport === "desktop" && !ad.desktopEnabled) return false;
-  if (ad.startAt && new Date(ad.startAt) > now) return false;
-  if (ad.endAt && new Date(ad.endAt) < now) return false;
+export function sanitizeAdItem(item, fallbackSlot = {}, index = 0) {
+  return {
+    id: String(item?.id || `${fallbackSlot.slotKey || "ad"}_${Date.now()}_${index + 1}`),
+    enabled: Boolean(item?.enabled),
+    title: String(item?.title || fallbackSlot.title || ""),
+    imageUrl: String(item?.imageUrl || item?.image || ""),
+    linkUrl: String(item?.linkUrl || item?.link || ""),
+    target: item?.target === "_self" ? "_self" : "_blank",
+    sort: Number(item?.sort || index + 1),
+    desktopEnabled: item?.desktopEnabled === undefined ? Boolean(fallbackSlot.items?.[0]?.desktopEnabled) : Boolean(item.desktopEnabled),
+    mobileEnabled: item?.mobileEnabled === undefined ? Boolean(fallbackSlot.items?.[0]?.mobileEnabled) : Boolean(item.mobileEnabled),
+    startAt: String(item?.startAt || ""),
+    endAt: String(item?.endAt || "")
+  };
+}
+
+export function activeAdItems(slot, viewport = "desktop", now = new Date()) {
+  if (!slot?.enabled) return [];
+  return (Array.isArray(slot.items) ? slot.items : [])
+    .filter((item) => isAdItemActive(item, viewport, now))
+    .sort((a, b) => Number(a.sort || 0) - Number(b.sort || 0));
+}
+
+export function isAdItemActive(item, viewport = "desktop", now = new Date()) {
+  if (!item?.enabled) return false;
+  if (viewport === "mobile" && !item.mobileEnabled) return false;
+  if (viewport === "desktop" && !item.desktopEnabled) return false;
+  if (item.startAt && new Date(item.startAt) > now) return false;
+  if (item.endAt && new Date(item.endAt) < now) return false;
   return true;
+}
+
+export function isAdActive(ad, viewport = "desktop", now = new Date()) {
+  if (Array.isArray(ad?.items)) return activeAdItems(ad, viewport, now).length > 0;
+  return isAdItemActive(ad, viewport, now);
+}
+
+function legacySlotToItem(slot, fallback) {
+  const fallbackItem = fallback?.items?.[0] || {};
+  return {
+    id: `${slot?.slotKey || fallback.slotKey}_001`,
+    enabled: Boolean(slot?.enabled),
+    title: slot?.title || fallback.title,
+    imageUrl: slot?.imageUrl || slot?.image || fallbackItem.imageUrl || "",
+    linkUrl: slot?.linkUrl || slot?.link || fallbackItem.linkUrl || "",
+    target: slot?.target || fallbackItem.target || "_blank",
+    sort: 1,
+    desktopEnabled: slot?.desktopEnabled === undefined ? fallbackItem.desktopEnabled : slot.desktopEnabled,
+    mobileEnabled: slot?.mobileEnabled === undefined ? fallbackItem.mobileEnabled : slot.mobileEnabled,
+    startAt: slot?.startAt || "",
+    endAt: slot?.endAt || ""
+  };
+}
+
+function hasLegacyItemFields(slot) {
+  return ["image", "link", "imageUrl", "linkUrl", "target", "desktopEnabled", "mobileEnabled", "startAt", "endAt"].some((field) =>
+    Object.prototype.hasOwnProperty.call(slot || {}, field)
+  );
 }
