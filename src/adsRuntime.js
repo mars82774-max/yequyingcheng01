@@ -40,7 +40,6 @@ function renderAdSlot(slot, items) {
 
   return `
     <div class="ad-slot ad-carousel" data-carousel data-interval="${Number(slot.intervalMs || 5000)}" data-slot="${escapeHtml(slot.slotKey)}">
-      <span class="ad-label">Advertisement</span>
       <div class="ad-carousel-track">
         ${items.map((item, index) => renderAdSlide({ ...item, slotKey: slot.slotKey }, index === 0)).join("")}
       </div>
@@ -54,7 +53,7 @@ function renderAdSlot(slot, items) {
 }
 
 function renderAdItem(ad) {
-  const body = `<span class="ad-label">Advertisement</span>${renderAdMedia(ad)}`;
+  const body = renderAdMedia(ad);
   const link = ad.linkUrl || ad.link;
   if (!link) return `<div class="ad-slot" data-slot="${escapeHtml(ad.slotKey)}">${body}</div>`;
   return `<a class="ad-slot" data-slot="${escapeHtml(ad.slotKey)}" href="${escapeHtml(link)}" target="${escapeHtml(ad.target || "_blank")}" rel="noreferrer">${body}</a>`;

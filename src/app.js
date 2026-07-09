@@ -110,7 +110,6 @@ function renderHeroAdCarousel() {
 
   return `
     <div class="ad-slot ad-hero ad-carousel" data-carousel>
-      <span class="ad-label">Advertisement</span>
       <div class="ad-carousel-track">
         ${ads.map((ad, index) => renderAdSlide(ad, index === 0)).join("")}
       </div>
@@ -151,7 +150,6 @@ function renderAdSlotComponent(slot, items, options = {}) {
 function renderAdCarousel(slot, items, options = {}) {
   return `
     <div class="ad-slot ${options.className || ""} ad-carousel" data-carousel data-interval="${Number(slot.intervalMs || 5000)}" data-slot="${escapeHtml(slot.slotKey)}">
-      <span class="ad-label">Advertisement</span>
       <div class="ad-carousel-track">
         ${items.map((item, index) => renderAdSlide({ ...item, slotKey: slot.slotKey }, index === 0)).join("")}
       </div>
@@ -165,9 +163,7 @@ function renderAdCarousel(slot, items, options = {}) {
 }
 
 function renderAdItem(ad, options = {}) {
-  const label = options.native ? "AD" : "Advertisement";
   const body = `
-    <span class="ad-label">${label}</span>
     ${renderAdMedia(ad)}
     ${options.native ? `<strong>${escapeHtml(ad.title)}</strong>` : ""}
   `;
