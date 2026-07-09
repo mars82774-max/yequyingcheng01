@@ -1,13 +1,13 @@
 {
   "latestLastRunAt": "2026-07-09T11:39:40.974Z",
   "latestLastNewCount": 0,
-  "backfillPage": 210,
-  "backfillCursor": "https://j-av.com/video/index.php?m=03&y=26&d=15&entry=entry260315-062827",
-  "oldestVideoId": "entry260311-062203",
-  "oldestVideoDate": "2026-3-11",
-  "totalVideos": 1014,
-  "lastBackfillRunAt": "2026-07-09T23:31:19.187Z",
-  "lastBackfillFetchedCount": 68,
+  "backfillPage": 214,
+  "backfillCursor": "https://j-av.com/video/index.php?entry=entry260313-132621",
+  "oldestVideoId": "entry260309-140555",
+  "oldestVideoDate": "2026-3-9",
+  "totalVideos": 1030,
+  "lastBackfillRunAt": "2026-07-09T23:40:59.373Z",
+  "lastBackfillFetchedCount": 60,
   "lastBackfillDuplicateCount": 44,
-  "lastBackfillAddedCount": 24
+  "lastBackfillAddedCount": 16
 }
