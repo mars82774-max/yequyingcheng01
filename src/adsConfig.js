@@ -58,9 +58,12 @@ const defaultItemsBySlot = {
 
 export const adsConfig = slotDefaults.map(([slotKey, title, enabled, desktopEnabled, mobileEnabled, sort]) => ({
   siteCode: SITE_CODE,
+  id: slotKey,
   slotKey,
   title,
   enabled,
+  desktopEnabled,
+  mobileEnabled,
   carousel: true,
   intervalMs: 5000,
   sort,
@@ -83,22 +86,26 @@ export const adsConfig = slotDefaults.map(([slotKey, title, enabled, desktopEnab
 
 export function normalizeAds(input) {
   const source = Array.isArray(input) ? input : [];
-  const bySlot = new Map(source.map((item) => [item?.slotKey, item]).filter(([slotKey]) => slotKey));
+  const bySlot = new Map(source.map((item) => [item?.id || item?.slotKey, item]).filter(([slotKey]) => slotKey));
   return adsConfig
     .map((fallback) => sanitizeAdSlot({ ...fallback, ...(bySlot.get(fallback.slotKey) || {}) }))
     .sort((a, b) => Number(a.sort || 0) - Number(b.sort || 0));
 }
 
 export function sanitizeAdSlot(slot) {
-  const fallback = adsConfig.find((item) => item.slotKey === slot?.slotKey) || adsConfig[0];
+  const slotKey = slot?.slotKey || slot?.id;
+  const fallback = adsConfig.find((item) => item.slotKey === slotKey || item.id === slotKey) || adsConfig[0];
   const legacyItem = legacySlotToItem(slot, fallback);
-  const sourceItems = hasLegacyItemFields(slot) ? [legacyItem] : Array.isArray(slot?.items) ? slot.items : [legacyItem];
+  const sourceItems = hasLegacyItemFields(slot) ? [legacyItem] : Array.isArray(slot?.items) ? slot.items : [];
 
   return {
     siteCode: String(slot?.siteCode || SITE_CODE),
-    slotKey: String(slot?.slotKey || fallback.slotKey),
+    id: String(slot?.id || slot?.slotKey || fallback.slotKey),
+    slotKey: String(slot?.slotKey || slot?.id || fallback.slotKey),
     title: String(slot?.title || fallback.title || ""),
     enabled: Boolean(slot?.enabled),
+    desktopEnabled: slot?.desktopEnabled === undefined ? Boolean(fallback.desktopEnabled) : Boolean(slot.desktopEnabled),
+    mobileEnabled: slot?.mobileEnabled === undefined ? Boolean(fallback.mobileEnabled) : Boolean(slot.mobileEnabled),
     carousel: slot?.carousel === undefined ? true : Boolean(slot.carousel),
     intervalMs: Math.max(1000, Number(slot?.intervalMs || 5000)),
     sort: Number(slot?.sort || fallback.sort || 0),
@@ -109,7 +116,7 @@ export function sanitizeAdSlot(slot) {
 export function sanitizeAdItem(item, fallbackSlot = {}, index = 0) {
   return {
     id: String(item?.id || `${fallbackSlot.slotKey || "ad"}_${Date.now()}_${index + 1}`),
-    enabled: Boolean(item?.enabled),
+    enabled: item?.enabled === undefined ? true : Boolean(item.enabled),
     title: String(item?.title || fallbackSlot.title || ""),
     imageUrl: String(item?.imageUrl || item?.image || ""),
     linkUrl: String(item?.linkUrl || item?.link || ""),
@@ -124,6 +131,8 @@ export function sanitizeAdItem(item, fallbackSlot = {}, index = 0) {
 
 export function activeAdItems(slot, viewport = "desktop", now = new Date()) {
   if (!slot?.enabled) return [];
+  if (viewport === "mobile" && slot.mobileEnabled === false) return [];
+  if (viewport === "desktop" && slot.desktopEnabled === false) return [];
   return (Array.isArray(slot.items) ? slot.items : [])
     .filter((item) => isAdItemActive(item, viewport, now))
     .sort((a, b) => Number(a.sort || 0) - Number(b.sort || 0));
@@ -146,8 +155,8 @@ export function isAdActive(ad, viewport = "desktop", now = new Date()) {
 function legacySlotToItem(slot, fallback) {
   const fallbackItem = fallback?.items?.[0] || {};
   return {
-    id: `${slot?.slotKey || fallback.slotKey}_001`,
-    enabled: Boolean(slot?.enabled),
+    id: `${slot?.slotKey || slot?.id || fallback.slotKey}_001`,
+    enabled: slot?.enabled === undefined ? true : Boolean(slot.enabled),
     title: slot?.title || fallback.title,
     imageUrl: slot?.imageUrl || slot?.image || fallbackItem.imageUrl || "",
     linkUrl: slot?.linkUrl || slot?.link || fallbackItem.linkUrl || "",
@@ -161,7 +170,7 @@ function legacySlotToItem(slot, fallback) {
 }
 
 function hasLegacyItemFields(slot) {
-  return ["image", "link", "imageUrl", "linkUrl", "target", "desktopEnabled", "mobileEnabled", "startAt", "endAt"].some((field) =>
+  return ["image", "link", "imageUrl", "linkUrl", "target", "startAt", "endAt"].some((field) =>
     Object.prototype.hasOwnProperty.call(slot || {}, field)
   );
 }

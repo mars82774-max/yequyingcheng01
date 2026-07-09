@@ -45,6 +45,17 @@ button.secondary {
   border: 1px solid var(--line);
 }
 
+button.small {
+  padding: 7px 11px;
+  font-size: 12px;
+}
+
+button.danger {
+  color: var(--danger);
+  background: rgba(255, 107, 107, 0.1);
+  border-color: rgba(255, 107, 107, 0.28);
+}
+
 .admin-shell {
   width: min(1180px, calc(100% - 32px));
   margin: 0 auto;
@@ -94,13 +105,18 @@ button.secondary {
 .toolbar,
 .toolbar-actions,
 .editor-head,
-.checks {
+.checks,
+.items-head,
+.item-head,
+.item-actions {
   display: flex;
   gap: 14px;
 }
 
 .toolbar,
-.editor-head {
+.editor-head,
+.items-head,
+.item-head {
   align-items: center;
   justify-content: space-between;
 }
@@ -170,6 +186,10 @@ select {
   margin-top: 18px;
 }
 
+.slot-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .wide {
   grid-column: 1 / -1;
 }
@@ -179,16 +199,65 @@ select {
   flex-wrap: wrap;
 }
 
+.inline-switch {
+  align-self: end;
+  min-height: 42px;
+}
+
+.items-head {
+  margin-top: 20px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+}
+
+.ad-items {
+  display: grid;
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.empty-items {
+  margin: 0;
+  padding: 16px;
+  color: var(--muted);
+  border: 1px dashed var(--line);
+  border-radius: 12px;
+}
+
+.ad-item-editor {
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.ad-item-editor label {
+  min-width: 0;
+}
+
+.item-head strong {
+  color: var(--text);
+}
+
+.item-actions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
 @media (max-width: 760px) {
   .admin-hero,
   .toolbar,
   .editor-head,
-  .toolbar-actions {
+  .toolbar-actions,
+  .items-head,
+  .item-head,
+  .item-actions {
     align-items: stretch;
     flex-direction: column;
   }
 
-  .form-grid {
+  .form-grid,
+  .slot-grid {
     grid-template-columns: 1fr;
   }
 }
