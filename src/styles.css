@@ -884,6 +884,72 @@ footer img {
   min-height: 520px;
 }
 
+.detail-meta {
+  margin-bottom: 24px;
+}
+
+.video-info-panel,
+.detail-recommendations {
+  margin-top: 34px;
+}
+
+.video-info-panel {
+  padding: 24px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: rgba(19, 19, 19, 0.74);
+}
+
+.video-info-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin: 18px 0 0;
+}
+
+.video-info-grid div {
+  min-width: 0;
+  padding: 13px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.video-info-grid dt {
+  color: var(--gold);
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.video-info-grid dd {
+  margin: 5px 0 0;
+  color: var(--text);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.video-info-description {
+  margin: 18px 0 0;
+  color: var(--muted);
+  line-height: 1.7;
+}
+
+.detail-recommendations {
+  display: grid;
+  gap: 34px;
+}
+
+.recommendation-section {
+  display: grid;
+  gap: 16px;
+}
+
+.recommendation-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
 @media (max-width: 1040px) {
   .hero,
   .video-grid {
@@ -967,6 +1033,29 @@ footer img {
 
   .video-detail-title {
     font-size: clamp(24px, 8vw, 32px);
+    -webkit-line-clamp: 3;
+  }
+
+  .video-info-panel {
+    padding: 18px;
+  }
+
+  .video-info-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .recommendation-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .recommendation-grid .card-body {
+    padding: 10px;
+    min-height: 112px;
+  }
+
+  .recommendation-grid .video-title {
+    min-height: 44px;
+    font-size: 14px;
     -webkit-line-clamp: 3;
   }
 }

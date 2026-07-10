@@ -33,8 +33,8 @@ for (const video of mockVideos) {
   await writeHtml(`video/${video.id}/index.html`, renderVideoPage(video));
 }
 
-for (const tag of unique(mockVideos.flatMap((video) => publicTags(video)))) {
-  const videos = mockVideos.filter((video) => publicTags(video).includes(tag));
+for (const tag of unique(mockVideos.flatMap((video) => displayTags(video)))) {
+  const videos = mockVideos.filter((video) => displayTags(video).includes(tag));
   await writeHtml(`tag/${tag}/index.html`, renderListingPage(`標籤：${tag}`, videos, `/tag/${encodeURIComponent(tag)}/`));
 }
 
@@ -63,7 +63,138 @@ function isCatalogCode(value) {
 }
 
 function publicTags(video) {
-  return (video.tags || []).filter((tag) => tag && !isCatalogCode(tag));
+  return unique((video.tags || []).filter((tag) => tag && !isCatalogCode(tag)).map(normalizeText));
+}
+
+function publicCategories(video) {
+  return unique((video.category || []).map(normalizeText));
+}
+
+function displayTags(video) {
+  const categories = new Set(publicCategories(video).map((value) => value.toLowerCase()));
+  return publicTags(video).filter((tag) => !categories.has(tag.toLowerCase()));
+}
+
+function normalizeText(value) {
+  return String(value ?? "").replace(/\s+/g, " ").trim();
+}
+
+function catalogCode(video) {
+  const candidates = [
+    video?.catalogCode,
+    video?.code,
+    video?.productCode,
+    video?.title,
+    ...(video?.tags || []),
+    video?.cover,
+    video?.cover_source,
+    video?.source_url
+  ];
+  for (const value of candidates) {
+    const match = String(value || "").toUpperCase().match(/\b[A-Z]{2,8}[-_ ]?\d{2,6}\b/);
+    if (match) return match[0].replace(/[ _]/g, "-");
+  }
+  return "";
+}
+
+function catalogPrefixFromCode(code) {
+  return String(code || "").split("-")[0] || "";
+}
+
+function videoDateValue(video) {
+  const raw = video?.date || video?.publishedAt || video?.createdAt || video?.updatedAt || "";
+  const time = Date.parse(String(raw).replaceAll("-", "/"));
+  return Number.isNaN(time) ? 0 : time;
+}
+
+function stableHash(value) {
+  let hash = 2166136261;
+  for (const char of String(value)) {
+    hash ^= char.charCodeAt(0);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
+function isAdVideo(video) {
+  return Boolean(video?.isAd || video?.ad || video?.slotKey || video?.adSlot || video?.type === "ad");
+}
+
+function sharedScore(current, candidate) {
+  const currentTags = new Set([...publicCategories(current), ...displayTags(current)].map((value) => value.toLowerCase()));
+  const candidateTags = [...publicCategories(candidate), ...displayTags(candidate)].map((value) => value.toLowerCase());
+  const sharedTags = candidateTags.filter((tag) => currentTags.has(tag)).length;
+  const currentPrefix = catalogPrefixFromCode(catalogCode(current));
+  const candidatePrefix = catalogPrefixFromCode(catalogCode(candidate));
+  const seriesScore = currentPrefix && currentPrefix === candidatePrefix ? 20 : 0;
+  return sharedTags * 6 + seriesScore;
+}
+
+function sortStable(videos, seed, scoreFn) {
+  return [...videos].sort((a, b) => {
+    const scoreDiff = scoreFn(b) - scoreFn(a);
+    if (scoreDiff) return scoreDiff;
+    const dateDiff = videoDateValue(b) - videoDateValue(a);
+    if (dateDiff) return dateDiff;
+    return stableHash(`${seed}:${a.id}`) - stableHash(`${seed}:${b.id}`);
+  });
+}
+
+function takeUnique(source, limit, used) {
+  const picked = [];
+  for (const video of source) {
+    if (!video?.id || used.has(video.id) || isAdVideo(video)) continue;
+    used.add(video.id);
+    picked.push(video);
+    if (picked.length >= limit) break;
+  }
+  return picked;
+}
+
+function recommendationSections(video) {
+  const used = new Set([video.id]);
+  const candidates = mockVideos.filter((candidate) => candidate.id !== video.id && !isAdVideo(candidate));
+  const code = catalogCode(video);
+  const prefix = catalogPrefixFromCode(code);
+  const sections = [];
+
+  const related = takeUnique(
+    sortStable(candidates, `${video.id}:related`, (candidate) => sharedScore(video, candidate)),
+    8,
+    used
+  );
+  if (related.length) sections.push({ title: "相關影片", videos: related });
+
+  if (prefix) {
+    const sameSeries = takeUnique(
+      sortStable(
+        candidates.filter((candidate) => catalogPrefixFromCode(catalogCode(candidate)) === prefix),
+        `${video.id}:series`,
+        (candidate) => videoDateValue(candidate)
+      ),
+      8,
+      used
+    );
+    if (sameSeries.length) sections.push({ title: "同系列作品", videos: sameSeries });
+  }
+
+  const latest = takeUnique(
+    sortStable(candidates, `${video.id}:latest`, (candidate) => videoDateValue(candidate)),
+    8,
+    used
+  );
+  if (latest.length) sections.push({ title: "最新更新", videos: latest });
+
+  if (!sections.length) {
+    const fallback = takeUnique(
+      sortStable(candidates, `${video.id}:fallback`, (candidate) => stableHash(candidate.id)),
+      8,
+      used
+    );
+    if (fallback.length) sections.push({ title: "猜你喜歡", videos: fallback });
+  }
+
+  return sections;
 }
 
 function escapeHtml(value) {
@@ -111,7 +242,8 @@ function pageShell({ title, description, path, body, image = "/assets/brands/yeq
 
 function renderVideoPage(video) {
   const path = `/video/${encodeURIComponent(video.id)}/`;
-  const tags = publicTags(video);
+  const categories = publicCategories(video);
+  const tags = displayTags(video);
   const embedUrl = playableEmbedUrl(video.embed_url);
   const visibleDescription = cleanVideoDescription(video);
   const metaDescription = visibleDescription || video.title;
@@ -138,20 +270,81 @@ function renderVideoPage(video) {
         <p class="eyebrow">Video Detail</p>
         <h1 class="video-detail-title">${escapeHtml(video.title)}</h1>
         ${visibleDescription ? `<p class="summary video-detail-description">${escapeHtml(visibleDescription)}</p>` : ""}
-        <div class="meta-row">
-          <span>${escapeHtml(video.date)}</span>
-          ${video.category.map((category) => `<a href="/category/${encodeURIComponent(category)}/">${escapeHtml(category)}</a>`).join("")}
-        </div>
-        <div class="chips">
-          ${tags.map((tag) => `<a href="/tag/${encodeURIComponent(tag)}/">${escapeHtml(tag)}</a>`).join("")}
-        </div>
+        ${renderDetailMeta(video, categories, tags)}
         <div class="hero-player seo-player">
           ${renderEmbedPlayer(video)}
         </div>
         <div data-ad-slot="ad_player_below"></div>
+        ${renderVideoInfo(video, categories, tags, visibleDescription)}
+        ${renderRecommendationSections(video)}
       </article>
     </main>`
   });
+}
+
+function renderDetailMeta(video, categories, tags) {
+  const date = normalizeText(video.date);
+  const chips = [
+    date ? `<span>${escapeHtml(date)}</span>` : "",
+    ...categories.map((category) => `<a href="/category/${encodeURIComponent(category)}/">${escapeHtml(category)}</a>`),
+    ...tags.map((tag) => `<a href="/tag/${encodeURIComponent(tag)}/">${escapeHtml(tag)}</a>`)
+  ].filter(Boolean);
+
+  return chips.length ? `<div class="meta-row detail-meta">${chips.join("")}</div>` : "";
+}
+
+function renderVideoInfo(video, categories, tags, description) {
+  const code = catalogCode(video);
+  const rows = [
+    ["Code", code],
+    ["Date", normalizeText(video.date)],
+    ["Type", normalizeText(video.type === "iframe" ? "Video" : video.type)],
+    ["Category", categories.join(" / ")],
+    ["Tags", tags.join(" / ")]
+  ].filter(([, value]) => value);
+
+  if (!rows.length && !description) return "";
+
+  return `
+    <section class="video-info-panel" aria-label="Video information">
+      <div class="section-heading compact">
+        <div>
+          <p class="eyebrow">Info</p>
+          <h2>影片資訊</h2>
+        </div>
+      </div>
+      ${rows.length ? `<dl class="video-info-grid">${rows.map(([label, value]) => `
+        <div>
+          <dt>${escapeHtml(label)}</dt>
+          <dd>${escapeHtml(value)}</dd>
+        </div>
+      `).join("")}</dl>` : ""}
+      ${description ? `<p class="video-info-description">${escapeHtml(description)}</p>` : ""}
+    </section>
+  `;
+}
+
+function renderRecommendationSections(video) {
+  const sections = recommendationSections(video);
+  if (!sections.length) return "";
+
+  return `
+    <section class="detail-recommendations" aria-label="Recommendations">
+      ${sections.map((section) => `
+        <div class="recommendation-section">
+          <div class="section-heading compact">
+            <div>
+              <p class="eyebrow">Recommended</p>
+              <h2>${escapeHtml(section.title)}</h2>
+            </div>
+          </div>
+          <div class="video-grid recommendation-grid">
+            ${section.videos.map((item, index) => renderSeoCard(item, index)).join("")}
+          </div>
+        </div>
+      `).join("")}
+    </section>
+  `;
 }
 
 function cleanVideoDescription(video) {
@@ -230,13 +423,13 @@ function renderListingPage(title, videos, path) {
 function renderSeoCard(video, index) {
   return `<article class="video-card">
     <a class="thumb" href="/video/${encodeURIComponent(video.id)}/">
-      <div class="poster-fallback ${["gold", "sangria", "violet", "smoke"][index % 4]}"><span>${String(index + 1).padStart(2, "0")}</span></div>
+      ${video.cover ? `<img src="${escapeHtml(video.cover)}" alt="${escapeHtml(video.title)}" loading="lazy" />` : `<div class="poster-fallback ${["gold", "sangria", "violet", "smoke"][index % 4]}"><span>${String(index + 1).padStart(2, "0")}</span></div>`}
       <span class="play-dot">播放</span>
     </a>
     <div class="card-body">
-      <h3><a href="/video/${encodeURIComponent(video.id)}/">${escapeHtml(video.title)}</a></h3>
+      <h3 class="video-title"><a href="/video/${encodeURIComponent(video.id)}/">${escapeHtml(video.title)}</a></h3>
       <p>${escapeHtml(videoCardMeta(video))}</p>
-      <div class="chips">${publicTags(video).slice(0, 4).map((tag) => `<a href="/tag/${encodeURIComponent(tag)}/">${escapeHtml(tag)}</a>`).join("")}</div>
+      <div class="chips">${displayTags(video).slice(0, 4).map((tag) => `<a href="/tag/${encodeURIComponent(tag)}/">${escapeHtml(tag)}</a>`).join("")}</div>
     </div>
   </article>`;
 }
@@ -259,7 +452,7 @@ function renderSitemap() {
   const urls = [
     "/",
     ...mockVideos.map((video) => `/video/${encodeURIComponent(video.id)}/`),
-    ...unique(mockVideos.flatMap((video) => publicTags(video))).map((tag) => `/tag/${encodeURIComponent(tag)}/`),
+    ...unique(mockVideos.flatMap((video) => displayTags(video))).map((tag) => `/tag/${encodeURIComponent(tag)}/`),
     ...unique(mockVideos.flatMap((video) => video.category)).map((category) => `/category/${encodeURIComponent(category)}/`)
   ];
   return `<?xml version="1.0" encoding="UTF-8"?>
