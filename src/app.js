@@ -10,6 +10,9 @@ const brand = {
 
 const HOT_RANKING_HOSTS = ["yeying", "yeyingcheng", "ye-ying", "yesakura", "sakura"];
 const NATIVE_AD_INTERVAL = 6;
+const AD_DEVICE_BREAKPOINT = 760;
+const SIDEBAR_DESKTOP_BREAKPOINT = 1200;
+const isDevEnvironment = ["localhost", "127.0.0.1", ""].includes(window.location.hostname);
 const DEFAULT_NATIVE_CTA = "立即體驗";
 const INVALID_AD_TITLES = new Set([
   "原生廣告卡",
@@ -55,9 +58,15 @@ async function loadAds() {
     });
     if (!response.ok) throw new Error(`Ads API ${response.status}`);
     const payload = await response.json();
+    debugAdState("API slot keys", (payload.ads || []).map((slot) => slot?.slotKey || slot?.id));
+    debugAdState("API ad_sidebar raw", (payload.ads || []).find((slot) => (slot?.slotKey || slot?.id) === "ad_sidebar"));
     return normalizeAds(payload.ads);
-  } catch {
-    return normalizeAds(adsConfig);
+  } catch (error) {
+    debugAdState("API fallback reason", error);
+    const fallbackAds = normalizeAds(adsConfig);
+    debugAdState("API slot keys", fallbackAds.map((slot) => slot.slotKey));
+    debugAdState("API ad_sidebar raw", fallbackAds.find((slot) => slot.slotKey === "ad_sidebar"));
+    return fallbackAds;
   }
 }
 
@@ -110,7 +119,7 @@ function escapeHtml(value) {
 }
 
 function renderAdSlot(slotKey, options = {}) {
-  const viewport = window.matchMedia("(max-width: 760px)").matches ? "mobile" : "desktop";
+  const viewport = currentAdViewport();
   const slot = state.ads.find((adSlot) => adSlot.slotKey === slotKey);
   if (!slot) return "";
   const items = activeAdItems(slot, viewport);
@@ -128,7 +137,7 @@ function activeAds(slotKeys, viewport) {
 }
 
 function activeAdSlotItems(slotKey) {
-  const viewport = window.matchMedia("(max-width: 760px)").matches ? "mobile" : "desktop";
+  const viewport = currentAdViewport();
   const slot = state.ads.find((adSlot) => adSlot.slotKey === slotKey);
   if (!slot) return [];
   return activeAdItems(slot, viewport).map((item) => ({ ...item, slotKey: slot.slotKey }));
@@ -149,7 +158,7 @@ function nativeAdForInsert(index, nativeItems) {
 }
 
 function renderHeroAdCarousel() {
-  const viewport = window.matchMedia("(max-width: 760px)").matches ? "mobile" : "desktop";
+  const viewport = currentAdViewport();
   const ads = activeAds(["ad_hero_side", "ad_mobile_top", "ad_desktop_leaderboard"], viewport);
   if (!ads.length) return "";
   if (ads.length === 1) return renderAdItem(ads[0], { className: "ad-hero" });
@@ -317,9 +326,9 @@ function renderAdMedia(ad) {
     return `<div class="ad-empty"><strong>${escapeHtml(displayAdTitle(ad))}</strong><span>廣告素材待設定</span></div>`;
   }
   if (isVideoAsset(image)) {
-    return `<video src="${escapeHtml(image)}" autoplay muted loop playsinline preload="metadata" onerror="this.closest('.ad-slide,.ad-slot')?.classList.add('ad-media-error')"></video>`;
+    return `<video src="${escapeHtml(image)}" autoplay muted loop playsinline preload="metadata" onerror="window.reportAdMediaError?.(this); this.closest('.ad-slide,.ad-slot')?.classList.add('ad-media-error')"></video>`;
   }
-  return `<img src="${escapeHtml(image)}" alt="${escapeHtml(displayAdTitle(ad))}" loading="lazy" onerror="this.closest('.ad-slide,.ad-slot')?.classList.add('ad-media-error')" />`;
+  return `<img src="${escapeHtml(image)}" alt="${escapeHtml(displayAdTitle(ad))}" loading="lazy" onerror="window.reportAdMediaError?.(this); this.closest('.ad-slide,.ad-slot')?.classList.add('ad-media-error')" />`;
 }
 
 function displayAdTitle(ad) {
@@ -335,6 +344,51 @@ function cleanAdText(value = "") {
 function isVideoAsset(url) {
   return /\.(mp4|webm|ogg)(?:[?#].*)?$/i.test(String(url));
 }
+
+function currentAdViewport() {
+  return window.matchMedia(`(max-width: ${AD_DEVICE_BREAKPOINT}px)`).matches ? "mobile" : "desktop";
+}
+
+function isSidebarDesktop() {
+  return window.innerWidth >= SIDEBAR_DESKTOP_BREAKPOINT;
+}
+
+function getActiveSidebarAdItems() {
+  const slot = state.ads.find((adSlot) => adSlot.slotKey === "ad_sidebar");
+  const desktop = isSidebarDesktop();
+  const items = slot && desktop ? activeAdItems(slot, "desktop") : [];
+  debugAdState("ad_sidebar filtered", {
+    innerWidth: window.innerWidth,
+    sidebarBreakpoint: SIDEBAR_DESKTOP_BREAKPOINT,
+    deviceState: desktop ? "desktop" : "mobile",
+    slot,
+    items
+  });
+  return { slot, items };
+}
+
+function renderSidebarAd() {
+  const { slot, items } = getActiveSidebarAdItems();
+  if (!slot || !items.length) return "";
+  return `
+    <aside class="sidebar-ad-area" aria-label="Sidebar advertisement">
+      ${renderAdSlotComponent(slot, items, { className: "ad-sidebar" })}
+    </aside>
+  `;
+}
+
+function debugAdState(label, value) {
+  if (!isDevEnvironment) return;
+  console.debug(`[ads] ${label}`, value);
+}
+
+window.reportAdMediaError = (media) => {
+  const container = media?.closest?.("[data-slot]");
+  console.error("[ads] media failed to load", {
+    slotKey: container?.dataset?.slot || "",
+    src: media?.currentSrc || media?.src || ""
+  });
+};
 
 function renderPlayer(video) {
   const embedUrl = playableEmbedUrl(video.embed_url);
@@ -408,6 +462,15 @@ function render() {
   const inlineAd = renderAdSlot("ad_inline_banner", { className: "ad-inline" });
   const nativeItems = activeAdSlotItems("ad_native_card");
   const hotRankingModules = isHotRankingSite() ? renderHotRankingModules(videos) : "";
+  const sidebarAd = renderSidebarAd();
+  const layoutClass = sidebarAd ? "front-layout has-sidebar" : "front-layout";
+  debugAdState("viewport", {
+    innerWidth: window.innerWidth,
+    adDeviceBreakpoint: AD_DEVICE_BREAKPOINT,
+    sidebarBreakpoint: SIDEBAR_DESKTOP_BREAKPOINT,
+    adViewport: currentAdViewport(),
+    sidebarViewport: isSidebarDesktop() ? "desktop" : "mobile"
+  });
 
   app.innerHTML = `
     <header class="topbar">
@@ -427,6 +490,8 @@ function render() {
     <main>
       ${mobileTop}
       ${leaderboard}
+      <div class="${layoutClass}">
+        <div class="main-content">
       <section id="featured" class="hero">
         <div class="hero-copy">
           <p class="eyebrow">夜趣特選</p>
@@ -458,6 +523,9 @@ function render() {
           `).join("") || `<p class="empty">沒有符合條件的影片，請換一個標籤或關鍵字。</p>`}
         </div>
       </section>
+        </div>
+        ${sidebarAd}
+      </div>
     </main>
 
     <footer>
@@ -495,6 +563,14 @@ function bindEvents() {
   startAdCarousels();
   startVideoCarousels();
 }
+
+let previousSidebarDesktop = isSidebarDesktop();
+window.addEventListener("resize", () => {
+  const nextSidebarDesktop = isSidebarDesktop();
+  if (nextSidebarDesktop === previousSidebarDesktop) return;
+  previousSidebarDesktop = nextSidebarDesktop;
+  render();
+});
 
 function startAdCarousels() {
   document.querySelectorAll("[data-carousel]").forEach((carousel) => {

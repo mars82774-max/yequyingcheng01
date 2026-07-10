@@ -100,6 +100,14 @@ main {
   padding: 34px 0 72px;
 }
 
+.front-layout {
+  display: block;
+}
+
+.main-content {
+  min-width: 0;
+}
+
 .hero {
   display: grid;
   grid-template-columns: minmax(0, 0.9fr) minmax(360px, 1.1fr);
@@ -374,6 +382,10 @@ h1 {
   margin-bottom: 24px;
 }
 
+.ad-inline {
+  margin-top: 24px;
+}
+
 .ad-leaderboard {
   height: 112px;
 }
@@ -390,6 +402,38 @@ h1 {
 
 .ad-hero {
   min-height: 100%;
+  height: 100%;
+}
+
+.sidebar-ad-area {
+  display: none;
+  min-width: 0;
+}
+
+.ad-sidebar {
+  width: 100%;
+  height: auto;
+  min-height: 0;
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+.ad-sidebar.ad-carousel {
+  aspect-ratio: 3 / 4;
+  height: auto;
+}
+
+.ad-sidebar img,
+.ad-sidebar video {
+  display: block;
+  width: 100%;
+  height: auto;
+  min-height: 0;
+  object-fit: cover;
+}
+
+.ad-sidebar .ad-slide img,
+.ad-sidebar .ad-slide video {
   height: 100%;
 }
 
@@ -948,6 +992,30 @@ footer img {
 
 .recommendation-grid {
   grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+@media (min-width: 1200px) {
+  .front-layout.has-sidebar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 300px;
+    gap: 24px;
+    align-items: start;
+  }
+
+  .front-layout.has-sidebar .sidebar-ad-area {
+    position: sticky;
+    top: 88px;
+    display: block;
+    align-self: start;
+  }
+
+  .front-layout.has-sidebar .video-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .front-layout.has-sidebar .ranking-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 1040px) {
