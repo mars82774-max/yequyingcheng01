@@ -19,6 +19,7 @@ jobs:
     env:
       CRAWL_MODE: backfill
       MAX_OLD_ITEMS: 24
+      MAX_BACKFILL_PAGES: 20
 
     steps:
       - name: Checkout repository

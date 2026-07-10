@@ -42,12 +42,14 @@ if (crawlMode !== "backfill") {
 }
 
 const backfillResult = await crawlBackfill(mockVideos, state);
+const previousBackfillCursor = state.backfillCursor;
 state.lastBackfillRunAt = now;
 state.backfillPage = backfillResult.nextPage;
 state.backfillCursor = backfillResult.nextCursor;
 state.lastBackfillFetchedCount = backfillResult.fetchedCount;
 state.lastBackfillDuplicateCount = backfillResult.duplicateCount;
 state.lastBackfillAddedCount = backfillResult.items.length;
+state.lastBackfillStopReason = backfillResult.stopReason;
 
 if (backfillResult.items.length > 0) {
   const merged = dedupeVideos([...mockVideos, ...backfillResult.items]);
@@ -61,6 +63,11 @@ if (backfillResult.items.length > 0) {
 }
 
 logBackfillSummary(backfillResult, state);
+if (backfillProgressChanged(previousBackfillCursor, state)) {
+  await writeState(state);
+  console.log("Saved backfill cursor progress without new videos.");
+  process.exit(0);
+}
 console.log("No old video updates");
 
 async function crawlLatest(currentVideos) {
@@ -132,6 +139,7 @@ async function crawlBackfill(currentVideos, crawlState) {
   let nextPage = currentPage;
   let fetchedCount = 0;
   let duplicateCount = 0;
+  let stopReason = "no_next_cursor";
 
   while (pageUrl && !seenPages.has(pageUrl) && (maxBackfillPages <= 0 || pagesDone < maxBackfillPages)) {
     seenPages.add(pageUrl);
@@ -159,28 +167,38 @@ async function crawlBackfill(currentVideos, crawlState) {
       if (maxOldItems > 0 && items.length >= maxOldItems) {
         nextCursor = parseNextUrl(html, pageUrl) || pageUrl;
         nextPage = currentPage + 1;
-        return { items, nextCursor, nextPage, pagesDone, fetchedCount, duplicateCount };
+        stopReason = "max_old_items";
+        return { items, nextCursor, nextPage, pagesDone, fetchedCount, duplicateCount, stopReason };
       }
       await sleep(delayMs);
     }
 
     nextCursor = parseNextUrl(html, pageUrl);
     nextPage = currentPage + 1;
+    stopReason = nextCursor ? "next_cursor" : "no_next_cursor";
     pageUrl = nextCursor;
     currentPage = nextPage;
     await sleep(delayMs);
   }
 
-  return { items, nextCursor: nextCursor || "", nextPage, pagesDone, fetchedCount, duplicateCount };
+  if (pageUrl && seenPages.has(pageUrl)) stopReason = "repeated_cursor";
+  if (maxBackfillPages > 0 && pagesDone >= maxBackfillPages) stopReason = "max_backfill_pages";
+  return { items, nextCursor: nextCursor || "", nextPage, pagesDone, fetchedCount, duplicateCount, stopReason };
 }
 
 function logBackfillSummary(result, crawlState) {
   console.log(`Backfill page: ${crawlState.backfillPage}`);
+  console.log(`Pages scanned: ${result.pagesDone}`);
   console.log(`Fetched count: ${result.fetchedCount}`);
   console.log(`Duplicate count: ${result.duplicateCount}`);
   console.log(`Added old video count: ${result.items.length}`);
   console.log(`Next backfill cursor: ${crawlState.backfillCursor || ""}`);
   console.log(`Next backfill page: ${crawlState.backfillPage}`);
+  console.log(`Stop reason: ${result.stopReason}`);
+}
+
+function backfillProgressChanged(previousCursor, crawlState) {
+  return Boolean(crawlState.backfillCursor && crawlState.backfillCursor !== previousCursor);
 }
 
 function updateOldestState(crawlState, videos) {
@@ -278,7 +296,8 @@ async function readState() {
     lastBackfillRunAt: "",
     lastBackfillFetchedCount: 0,
     lastBackfillDuplicateCount: 0,
-    lastBackfillAddedCount: 0
+    lastBackfillAddedCount: 0,
+    lastBackfillStopReason: ""
   };
 
   try {
@@ -354,6 +373,9 @@ function parseEntryUrls(html, pageUrl) {
 }
 
 function parseNextUrl(html, pageUrl) {
+  const olderEntryUrl = parseOlderEntryUrl(html, pageUrl);
+  if (olderEntryUrl) return olderEntryUrl;
+
   const links = [...html.matchAll(/<a[^>]+href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi)];
   for (const [, href, label] of links) {
     const text = cleanText(label).toLowerCase();
@@ -364,6 +386,16 @@ function parseNextUrl(html, pageUrl) {
 
   const entryUrls = parseEntryUrls(html, pageUrl);
   return entryUrls.at(-1) || "";
+}
+
+function parseOlderEntryUrl(html, pageUrl) {
+  const currentId = entryIdFromUrl(pageUrl);
+  if (!currentId) return "";
+
+  return parseEntryUrls(html, pageUrl)
+    .filter((url) => entryIdFromUrl(url) < currentId)
+    .sort((a, b) => entryIdFromUrl(b).localeCompare(entryIdFromUrl(a)))
+    .at(0) || "";
 }
 
 function findFirst(html, pattern, predicate = () => true) {
