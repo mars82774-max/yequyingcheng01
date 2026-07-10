@@ -6,6 +6,10 @@ import { mockVideos } from "../src/mockVideos.js";
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const dist = join(root, "dist");
 const siteUrl = "https://yequyingcheng01.pages.dev";
+const recommendationLimit = 8;
+const maxRelatedCandidates = 240;
+const writeConcurrency = Number(process.env.BUILD_WRITE_CONCURRENCY || 40);
+const buildStartedAt = Date.now();
 const baiduAnalytics = `<script>
       var _hmt = _hmt || [];
       (function() {
@@ -16,6 +20,8 @@ const baiduAnalytics = `<script>
       })();
     </script>`;
 
+console.log("[build] start");
+console.log(`[build] total videos: ${mockVideos.length}`);
 await rm(dist, { recursive: true, force: true });
 await mkdir(dist, { recursive: true });
 
@@ -23,30 +29,57 @@ for (const entry of ["src", "assets", "admin"]) {
   await cp(join(root, entry), join(dist, entry), { recursive: true });
 }
 
+console.log("[build] preparing indexes");
+const buildIndex = prepareVideoIndex(mockVideos);
+console.log("[build] indexes ready");
+
 const sourceIndex = await readFile(join(root, "index.html"), "utf-8");
 const seoLinks = mockVideos
   .map((video) => `<a href="/video/${encodeURIComponent(video.id)}/">${escapeHtml(video.title)}</a>`)
   .join("\n      ");
 await writeFile(join(dist, "index.html"), sourceIndex.replace("<!-- SEO_LINKS -->", seoLinks), "utf-8");
 
-for (const video of mockVideos) {
-  await writeHtml(`video/${video.id}/index.html`, renderVideoPage(video));
-}
+await writeVideoPages();
 
-for (const tag of unique(mockVideos.flatMap((video) => displayTags(video)))) {
-  const videos = mockVideos.filter((video) => displayTags(video).includes(tag));
+console.log("[build] generating tag pages");
+let tagPageCount = 0;
+for (const [tag, videos] of buildIndex.videosByTag) {
   await writeHtml(`tag/${tag}/index.html`, renderListingPage(`標籤：${tag}`, videos, `/tag/${encodeURIComponent(tag)}/`));
+  tagPageCount += 1;
 }
 
-for (const category of unique(mockVideos.flatMap((video) => video.category))) {
-  const videos = mockVideos.filter((video) => video.category.includes(category));
+console.log("[build] generating category pages");
+let categoryPageCount = 0;
+for (const [category, videos] of buildIndex.videosByCategory) {
   await writeHtml(`category/${category}/index.html`, renderListingPage(`分類：${category}`, videos, `/category/${encodeURIComponent(category)}/`));
+  categoryPageCount += 1;
 }
 
+console.log("[build] writing sitemap");
 await writeFile(join(dist, "robots.txt"), renderRobots(), "utf-8");
 await writeFile(join(dist, "sitemap.xml"), renderSitemap(), "utf-8");
 
+console.log(`[build] video pages: ${mockVideos.length}`);
+console.log(`[build] tag pages: ${tagPageCount}`);
+console.log(`[build] category pages: ${categoryPageCount}`);
+console.log(`[build] completed in ${((Date.now() - buildStartedAt) / 1000).toFixed(1)} seconds`);
 console.log("Built static site to dist");
+
+async function writeVideoPages() {
+  let nextProgress = 100;
+  for (let index = 0; index < mockVideos.length; index += writeConcurrency) {
+    const batch = mockVideos.slice(index, index + writeConcurrency);
+    await Promise.all(batch.map((video) => writeHtml(`video/${video.id}/index.html`, renderVideoPage(video))));
+    const done = Math.min(index + batch.length, mockVideos.length);
+    while (done >= nextProgress) {
+      console.log(`[build] generating video pages: ${nextProgress}/${mockVideos.length}`);
+      nextProgress += 100;
+    }
+  }
+  if (mockVideos.length === 0 || (nextProgress - 100) !== mockVideos.length) {
+    console.log(`[build] generating video pages: ${mockVideos.length}/${mockVideos.length}`);
+  }
+}
 
 async function writeHtml(relativePath, html) {
   const target = join(dist, relativePath);
@@ -120,13 +153,76 @@ function isAdVideo(video) {
   return Boolean(video?.isAd || video?.ad || video?.slotKey || video?.adSlot || video?.type === "ad");
 }
 
+function prepareVideoIndex(videos) {
+  const metaById = new Map();
+  const videosByCategory = new Map();
+  const videosByTag = new Map();
+  const videosByCatalogPrefix = new Map();
+  const indexableVideos = videos.filter((video) => video?.id && !isAdVideo(video));
+
+  for (const video of indexableVideos) {
+    const code = catalogCode(video);
+    const meta = {
+      categories: publicCategories(video),
+      tags: displayTags(video),
+      code,
+      prefix: catalogPrefixFromCode(code),
+      dateValue: videoDateValue(video)
+    };
+    metaById.set(video.id, meta);
+    for (const category of meta.categories) addToMapList(videosByCategory, category, video);
+    for (const tag of meta.tags) addToMapList(videosByTag, tag, video);
+    if (meta.prefix) addToMapList(videosByCatalogPrefix, meta.prefix, video);
+  }
+
+  const latestVideos = sortNewest(indexableVideos, metaById);
+  sortMapListsByNewest(videosByCategory, metaById);
+  sortMapListsByNewest(videosByTag, metaById);
+  sortMapListsByNewest(videosByCatalogPrefix, metaById);
+
+  return {
+    metaById,
+    videosByCategory,
+    videosByTag,
+    videosByCatalogPrefix,
+    latestVideos
+  };
+}
+
+function addToMapList(map, key, video) {
+  if (!key) return;
+  const list = map.get(key);
+  if (list) {
+    list.push(video);
+  } else {
+    map.set(key, [video]);
+  }
+}
+
+function sortMapListsByNewest(map, metaById) {
+  for (const [key, videos] of map) {
+    map.set(key, sortNewest(videos, metaById));
+  }
+}
+
+function sortNewest(videos, metaById = buildIndex?.metaById) {
+  return [...videos].sort((a, b) => {
+    const metaA = metaById?.get(a.id);
+    const metaB = metaById?.get(b.id);
+    const dateDiff = (metaB?.dateValue ?? videoDateValue(b)) - (metaA?.dateValue ?? videoDateValue(a));
+    if (dateDiff) return dateDiff;
+    return String(b?.id || "").localeCompare(String(a?.id || ""));
+  });
+}
+
 function sharedScore(current, candidate) {
-  const currentTags = new Set([...publicCategories(current), ...displayTags(current)].map((value) => value.toLowerCase()));
-  const candidateTags = [...publicCategories(candidate), ...displayTags(candidate)].map((value) => value.toLowerCase());
+  const currentMeta = buildIndex.metaById.get(current.id);
+  const candidateMeta = buildIndex.metaById.get(candidate.id);
+  if (!currentMeta || !candidateMeta) return 0;
+  const currentTags = new Set([...currentMeta.categories, ...currentMeta.tags].map((value) => value.toLowerCase()));
+  const candidateTags = [...candidateMeta.categories, ...candidateMeta.tags].map((value) => value.toLowerCase());
   const sharedTags = candidateTags.filter((tag) => currentTags.has(tag)).length;
-  const currentPrefix = catalogPrefixFromCode(catalogCode(current));
-  const candidatePrefix = catalogPrefixFromCode(catalogCode(candidate));
-  const seriesScore = currentPrefix && currentPrefix === candidatePrefix ? 20 : 0;
+  const seriesScore = currentMeta.prefix && currentMeta.prefix === candidateMeta.prefix ? 20 : 0;
   return sharedTags * 6 + seriesScore;
 }
 
@@ -134,7 +230,7 @@ function sortStable(videos, seed, scoreFn) {
   return [...videos].sort((a, b) => {
     const scoreDiff = scoreFn(b) - scoreFn(a);
     if (scoreDiff) return scoreDiff;
-    const dateDiff = videoDateValue(b) - videoDateValue(a);
+    const dateDiff = (buildIndex.metaById.get(b.id)?.dateValue ?? videoDateValue(b)) - (buildIndex.metaById.get(a.id)?.dateValue ?? videoDateValue(a));
     if (dateDiff) return dateDiff;
     return stableHash(`${seed}:${a.id}`) - stableHash(`${seed}:${b.id}`);
   });
@@ -153,48 +249,70 @@ function takeUnique(source, limit, used) {
 
 function recommendationSections(video) {
   const used = new Set([video.id]);
-  const candidates = mockVideos.filter((candidate) => candidate.id !== video.id && !isAdVideo(candidate));
-  const code = catalogCode(video);
-  const prefix = catalogPrefixFromCode(code);
+  const meta = buildIndex.metaById.get(video.id);
+  const candidates = relatedCandidates(video, meta);
+  const prefix = meta?.prefix || "";
   const sections = [];
 
   const related = takeUnique(
     sortStable(candidates, `${video.id}:related`, (candidate) => sharedScore(video, candidate)),
-    8,
+    recommendationLimit,
     used
   );
   if (related.length) sections.push({ title: "相關影片", videos: related });
 
   if (prefix) {
     const sameSeries = takeUnique(
-      sortStable(
-        candidates.filter((candidate) => catalogPrefixFromCode(catalogCode(candidate)) === prefix),
-        `${video.id}:series`,
-        (candidate) => videoDateValue(candidate)
-      ),
-      8,
+      buildIndex.videosByCatalogPrefix.get(prefix) || [],
+      recommendationLimit,
       used
     );
     if (sameSeries.length) sections.push({ title: "同系列作品", videos: sameSeries });
   }
 
   const latest = takeUnique(
-    sortStable(candidates, `${video.id}:latest`, (candidate) => videoDateValue(candidate)),
-    8,
+    buildIndex.latestVideos,
+    recommendationLimit,
     used
   );
   if (latest.length) sections.push({ title: "最新更新", videos: latest });
 
   if (!sections.length) {
     const fallback = takeUnique(
-      sortStable(candidates, `${video.id}:fallback`, (candidate) => stableHash(candidate.id)),
-      8,
+      buildIndex.latestVideos,
+      recommendationLimit,
       used
     );
     if (fallback.length) sections.push({ title: "猜你喜歡", videos: fallback });
   }
 
   return sections;
+}
+
+function relatedCandidates(video, meta) {
+  if (!meta) return buildIndex.latestVideos.slice(0, maxRelatedCandidates);
+  const candidates = [];
+  const seen = new Set([video.id]);
+  const add = (source) => {
+    for (const candidate of source || []) {
+      if (!candidate?.id || seen.has(candidate.id) || isAdVideo(candidate)) continue;
+      seen.add(candidate.id);
+      candidates.push(candidate);
+      if (candidates.length >= maxRelatedCandidates) return;
+    }
+  };
+
+  if (meta.prefix) add(buildIndex.videosByCatalogPrefix.get(meta.prefix));
+  for (const category of meta.categories) {
+    add(buildIndex.videosByCategory.get(category));
+    if (candidates.length >= maxRelatedCandidates) break;
+  }
+  for (const tag of meta.tags) {
+    add(buildIndex.videosByTag.get(tag));
+    if (candidates.length >= maxRelatedCandidates) break;
+  }
+  if (!candidates.length) add(buildIndex.latestVideos);
+  return candidates;
 }
 
 function escapeHtml(value) {
@@ -452,8 +570,8 @@ function renderSitemap() {
   const urls = [
     "/",
     ...mockVideos.map((video) => `/video/${encodeURIComponent(video.id)}/`),
-    ...unique(mockVideos.flatMap((video) => displayTags(video))).map((tag) => `/tag/${encodeURIComponent(tag)}/`),
-    ...unique(mockVideos.flatMap((video) => video.category)).map((category) => `/category/${encodeURIComponent(category)}/`)
+    ...[...buildIndex.videosByTag.keys()].map((tag) => `/tag/${encodeURIComponent(tag)}/`),
+    ...[...buildIndex.videosByCategory.keys()].map((category) => `/category/${encodeURIComponent(category)}/`)
   ];
   return `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
