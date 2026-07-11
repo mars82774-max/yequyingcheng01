@@ -54049,5 +54049,27 @@ export const mockVideos = [
     ],
     "type": "iframe",
     "provider": "j-av"
+  },
+  {
+    "id": "entry260711-140817",
+    "slug": "entry260711-140817",
+    "title": "令和第一淫語女王 蓮實克蕾兒的射精管理JOI 邊緣控射挑逗＆耳邊低語誘惑，徹底淪陷在克蕾兒大人之中吧。",
+    "source_url": "https://j-av.com/video/index.php?entry=entry260711-140817",
+    "embed_url": "https://a-big.com/player/twvid/sw.php?id=xs2uhzdwkp7d&image=https://pics.dmm.co.jp/mono/movie/adult/cjod531/cjod531pl.jpg",
+    "cover_source": "https://pics.dmm.co.jp/mono/movie/adult/cjod531/cjod531pl.jpg",
+    "cover": "https://pics.dmm.co.jp/mono/movie/adult/cjod531/cjod531pl.jpg",
+    "date": "2026-7-11",
+    "category": [
+      "影音",
+      "中文有碼"
+    ],
+    "tags": [
+      "影音",
+      "中文有碼",
+      "CJOD-531",
+      "CJOD"
+    ],
+    "type": "iframe",
+    "provider": "j-av"
   }
 ];
