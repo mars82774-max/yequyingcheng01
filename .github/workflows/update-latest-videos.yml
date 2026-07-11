@@ -20,27 +20,43 @@ jobs:
       CRAWL_MODE: latest
 
     steps:
+      - name: Start timer
+        run: echo "WORKFLOW_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"
+
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
+          fetch-depth: 1
           persist-credentials: true
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: npm
+          cache-dependency-path: package-lock.json
 
       - name: Install dependencies
-        run: npm ci || npm install
+        run: |
+          start=$(date +%s)
+          if [ -f package-lock.json ]; then
+            npm ci --prefer-offline --no-audit --no-fund
+          else
+            npm install --prefer-offline --no-audit --no-fund
+          fi
+          end=$(date +%s)
+          echo "[time] npm install: $((end - start))s"
 
       - name: Update latest videos
-        run: npm run update:videos
-
-      - name: Build
-        run: npm run build
+        run: |
+          start=$(date +%s)
+          npm run update:videos
+          end=$(date +%s)
+          echo "[time] update:videos: $((end - start))s"
 
       - name: Commit changes if needed
         run: |
+          start=$(date +%s)
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
@@ -54,3 +70,11 @@ jobs:
           else
             echo "No video updates"
           fi
+          end=$(date +%s)
+          echo "[time] git commit/push: $((end - start))s"
+
+      - name: Total time
+        if: always()
+        run: |
+          end=$(date +%s)
+          echo "[time] total: $((end - WORKFLOW_STARTED_AT))s"
