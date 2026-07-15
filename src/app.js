@@ -12,6 +12,7 @@ const HOT_RANKING_HOSTS = ["yeying", "yeyingcheng", "ye-ying", "yesakura", "saku
 const NATIVE_AD_INTERVAL = 6;
 const AD_DEVICE_BREAKPOINT = 760;
 const SIDEBAR_DESKTOP_BREAKPOINT = 1200;
+const SHUFFLE_SESSION_KEY = "yequyingcheng.videoOrder.v1";
 const isDevEnvironment = ["localhost", "127.0.0.1", ""].includes(window.location.hostname);
 const DEFAULT_NATIVE_CTA = "立即體驗";
 const INVALID_AD_TITLES = new Set([
@@ -38,7 +39,7 @@ const INVALID_AD_TITLES = new Set([
 let state = {
   query: "",
   tag: "全部",
-  selected: mockVideos[0],
+  selected: sessionVideos()[0] || mockVideos[0],
   ads: adsConfig
 };
 
@@ -78,12 +79,54 @@ function uniqueTags() {
 
 function filteredVideos() {
   const keyword = state.query.trim().toLowerCase();
-  return mockVideos.filter((video) => {
+  return sessionVideos().filter((video) => {
     const tags = publicTags(video);
     const text = [video.title, ...video.category, ...tags].join(" ").toLowerCase();
     const tagMatched = state.tag === "全部" || tags.includes(state.tag) || video.category.includes(state.tag);
     return tagMatched && (!keyword || text.includes(keyword));
   });
+}
+
+function sessionVideos() {
+  const byId = new Map(mockVideos.map((video) => [video.id, video]));
+  return sessionVideoOrder().map((id) => byId.get(id)).filter(Boolean);
+}
+
+function sessionVideoOrder() {
+  const currentIds = mockVideos.map((video) => video.id);
+  try {
+    const stored = JSON.parse(sessionStorage.getItem(SHUFFLE_SESSION_KEY) || "[]");
+    if (isValidVideoOrder(stored, currentIds)) return stored;
+  } catch {
+    // Continue with a fresh order when sessionStorage cannot be read.
+  }
+
+  const shuffled = fisherYates([...currentIds]);
+  try {
+    sessionStorage.setItem(SHUFFLE_SESSION_KEY, JSON.stringify(shuffled));
+  } catch {
+    // Browsing can continue even when sessionStorage cannot be written.
+  }
+  return shuffled;
+}
+
+function isValidVideoOrder(order, ids) {
+  if (!Array.isArray(order) || order.length !== ids.length) return false;
+  const expected = new Set(ids);
+  const seen = new Set();
+  for (const id of order) {
+    if (!expected.has(id) || seen.has(id)) return false;
+    seen.add(id);
+  }
+  return true;
+}
+
+function fisherYates(items) {
+  for (let index = items.length - 1; index > 0; index -= 1) {
+    const swapIndex = Math.floor(Math.random() * (index + 1));
+    [items[index], items[swapIndex]] = [items[swapIndex], items[index]];
+  }
+  return items;
 }
 
 function isCatalogCode(value) {
@@ -438,7 +481,7 @@ function renderVideoCard(video, index, extra = "") {
       </a>
       <div class="card-body">
         <h3 class="video-title"><a href="${videoPath(video)}">${escapeHtml(video.title)}</a></h3>
-        <p>${escapeHtml(videoCardMeta(video))}</p>
+        <p>${escapeHtml(videoCardLabel(video))}</p>
         <div class="chips">
           ${publicTags(video).slice(0, 4).map((tag) => `<a href="${tagPath(tag)}">${escapeHtml(tag)}</a>`).join("")}
         </div>
@@ -447,10 +490,8 @@ function renderVideoCard(video, index, extra = "") {
   `;
 }
 
-function videoCardMeta(video) {
-  const date = video?.date || "未標日期";
-  const label = video?.type === "iframe" ? "影音" : video?.category?.[0] || "精選";
-  return `${date} · ${label}`;
+function videoCardLabel(video) {
+  return video?.type === "iframe" ? "影音" : video?.category?.[0] || "精選";
 }
 
 function render() {
@@ -514,7 +555,6 @@ function render() {
             <p class="eyebrow">Library</p>
             <h2>最新片庫</h2>
           </div>
-          <span>${videos.length} 部影片</span>
         </div>
         <div class="video-grid">
           ${videos.map((video, index) => `

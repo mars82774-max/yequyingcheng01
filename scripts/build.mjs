@@ -516,7 +516,7 @@ function playableEmbedUrl(url) {
 }
 
 function renderListingPage(title, videos, path) {
-  const description = `${title}，共 ${videos.length} 部影片。`;
+  const description = `${title} 精選影片列表。`;
   return pageShell({
     title: `${title} | 夜趣影城`,
     description,
@@ -528,7 +528,6 @@ function renderListingPage(title, videos, path) {
             <p class="eyebrow">Archive</p>
             <h1>${escapeHtml(title)}</h1>
           </div>
-          <span>${videos.length} 部影片</span>
         </div>
         <div class="video-grid">
           ${videos.map((video, index) => renderSeoCard(video, index)).join("")}
@@ -546,16 +545,14 @@ function renderSeoCard(video, index) {
     </a>
     <div class="card-body">
       <h3 class="video-title"><a href="/video/${encodeURIComponent(video.id)}/">${escapeHtml(video.title)}</a></h3>
-      <p>${escapeHtml(videoCardMeta(video))}</p>
+      <p>${escapeHtml(videoCardLabel(video))}</p>
       <div class="chips">${displayTags(video).slice(0, 4).map((tag) => `<a href="/tag/${encodeURIComponent(tag)}/">${escapeHtml(tag)}</a>`).join("")}</div>
     </div>
   </article>`;
 }
 
-function videoCardMeta(video) {
-  const date = video?.date || "未標日期";
-  const label = video?.type === "iframe" ? "影音" : video?.category?.[0] || "精選";
-  return `${date} · ${label}`;
+function videoCardLabel(video) {
+  return video?.type === "iframe" ? "影音" : video?.category?.[0] || "精選";
 }
 
 function renderRobots() {

@@ -842,7 +842,7 @@ h1 {
 
 .card-body {
   padding: 14px;
-  min-height: 118px;
+  min-height: 104px;
 }
 
 .card-body h3 {
@@ -1118,7 +1118,7 @@ footer img {
 
   .recommendation-grid .card-body {
     padding: 10px;
-    min-height: 112px;
+    min-height: 98px;
   }
 
   .recommendation-grid .video-title {
