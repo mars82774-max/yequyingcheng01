@@ -1,0 +1,20 @@
+[Unit]
+Description=Video crawler latest update
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=ubuntu
+WorkingDirectory=/home/ubuntu/video-crawler
+Environment=TZ=Asia/Taipei
+Environment=CRAWL_FETCH_MODE=browser
+Environment=BROWSER_PROFILE_DIR=/home/ubuntu/video-browser-profile
+Environment=MAX_LATEST_PAGES=3
+Environment=MAX_NEW_ITEMS=20
+Environment=SOURCE_FAILURE_PAUSE_THRESHOLD=1
+Environment=SOURCE_BLOCKED_PAUSE_HOURS=24
+TimeoutStartSec=12min
+ExecStart=/usr/bin/flock -n /home/ubuntu/video-crawler/video-crawler.lock /usr/bin/npm run crawl:server:latest
+StandardOutput=journal
+StandardError=journal

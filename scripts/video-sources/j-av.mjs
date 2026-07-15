@@ -1,4 +1,5 @@
 import { SourceStopError } from "./source-errors.mjs";
+import { createBrowserFetcher } from "./browser-fetch.mjs";
 
 const baseUrl = "https://j-av.com/video/index.php";
 
@@ -21,7 +22,10 @@ export function createJavAdapter(options = {}) {
         backfillRepairSkipPages: Number(env.BACKFILL_REPAIR_SKIP_PAGES || 3),
         maxNewItems: Number(env.MAX_NEW_ITEMS || 20),
         maxOldItems: Number(env.MAX_OLD_ITEMS || 24),
-        delayMs: Number(env.CRAWL_DELAY_MS || 800)
+        delayMs: Number(env.CRAWL_DELAY_MS || 800),
+        crawlFetchMode: String(env.CRAWL_FETCH_MODE || "http").toLowerCase(),
+        timeoutMs: Number(env.CRAWL_TIMEOUT_MS || 30000),
+        browserFetcher: null
       };
     },
     async crawlLatest(ctx) {
@@ -282,6 +286,10 @@ async function findBackfillRepairCursor(ctx) {
 
 async function fetchText(url, ctx) {
   console.log(`[crawl:${ctx.sourceName}] fetch=${url}`);
+  const fetchMode = ctx.crawlFetchMode === "browser" ? "browser" : "http";
+  console.log(`[crawl:${ctx.sourceName}] crawlFetchMode=${fetchMode}`);
+  if (fetchMode === "browser") return fetchTextWithBrowser(url, ctx);
+
   const headers = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126 Safari/537.36",
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
@@ -321,6 +329,40 @@ async function fetchText(url, ctx) {
     });
   }
   return text;
+}
+
+async function fetchTextWithBrowser(url, ctx) {
+  if (!ctx.browserFetcher) {
+    ctx.browserFetcher = await createBrowserFetcher(process.env);
+  }
+
+  let result;
+  try {
+    result = await ctx.browserFetcher.fetchText(url);
+  } catch (error) {
+    throw new SourceStopError(`Browser request failed: ${error?.message || error}. Run npm run browser:verify if verification is required.`, {
+      retryable: true,
+      blocked: true,
+      url,
+      httpStatus: 0
+    });
+  }
+
+  const ok = result.status >= 200 && result.status < 400;
+  console.log(`[crawl:${ctx.sourceName}] httpStatus=${result.status} ok=${ok} url=${url}`);
+  console.log(`[crawl:${ctx.sourceName}] finalUrl=${result.finalUrl || ""}`);
+  console.log(`[crawl:${ctx.sourceName}] responseLength=${result.html.length} title=${result.title || ""}`);
+  assertNormalHtml(result.html, url, result.status);
+  if (!ok) {
+    const blocked = [403, 429].includes(result.status) || result.status >= 500;
+    throw new SourceStopError(`Browser fetch failed ${result.status}: ${url} title=${result.title || ""} length=${result.html.length}. Run npm run browser:verify if verification is required.`, {
+      retryable: blocked,
+      blocked,
+      url,
+      httpStatus: result.status
+    });
+  }
+  return result.html;
 }
 
 async function parseVideoPage(url, ctx) {
@@ -416,7 +458,7 @@ function assertNormalHtml(html, url, status) {
     throw new SourceStopError(`Empty response body: status=${status} url=${url}`, { retryable: true, blocked: true, url, httpStatus: status });
   }
   if (lower.includes("cf-browser-verification") || lower.includes("just a moment") || lower.includes("captcha")) {
-    throw new SourceStopError(`Blocked or challenge response: status=${status} title=${title || ""} url=${url}. J_AV_COOKIE is supported only for legitimate authorized access.`, {
+    throw new SourceStopError(`Blocked or challenge response: status=${status} title=${title || ""} url=${url}. Run npm run browser:verify and complete the site's normal browser verification if required.`, {
       retryable: true,
       blocked: true,
       url,

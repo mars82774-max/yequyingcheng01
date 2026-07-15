@@ -98,6 +98,11 @@ for (const source of sources) {
     healthChanged = true;
     runResults.push(emptyResult(source.sourceName, error.message, error));
     break;
+  } finally {
+    if (ctx.browserFetcher) {
+      await ctx.browserFetcher.close();
+      ctx.browserFetcher = null;
+    }
   }
 }
 

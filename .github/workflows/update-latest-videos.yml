@@ -2,8 +2,8 @@ name: Update Latest Videos
 
 on:
   workflow_dispatch:
-  schedule:
-    - cron: "10 16 * * *"
+  # Scheduled crawling runs on the Lightsail crawler-server.
+  # Keep workflow_dispatch for manual diagnostics only.
 
 permissions:
   contents: write

@@ -1,0 +1,11 @@
+[Unit]
+Description=Run video latest crawler daily
+
+[Timer]
+OnCalendar=*-*-* 00:05:00
+Persistent=false
+AccuracySec=30s
+Unit=video-latest.service
+
+[Install]
+WantedBy=timers.target

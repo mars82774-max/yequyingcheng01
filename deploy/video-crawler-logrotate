@@ -1,0 +1,9 @@
+/home/ubuntu/video-crawler/logs/*.log {
+  daily
+  rotate 14
+  missingok
+  notifempty
+  compress
+  delaycompress
+  copytruncate
+}

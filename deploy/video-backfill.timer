@@ -1,0 +1,11 @@
+[Unit]
+Description=Run video backfill crawler every 10 minutes
+
+[Timer]
+OnCalendar=*-*-* *:05,15,25,35,45,55:00
+Persistent=false
+AccuracySec=30s
+Unit=video-backfill.service
+
+[Install]
+WantedBy=timers.target

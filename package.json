@@ -7,6 +7,12 @@
     "dev": "node scripts/dev-server.mjs",
     "build": "node scripts/build.mjs",
     "preview": "node scripts/dev-server.mjs dist 4174",
-    "update:videos": "node scripts/update-videos.mjs"
+    "update:videos": "node scripts/update-videos.mjs",
+    "browser:verify": "node scripts/browser-verify.mjs",
+    "crawl:server:backfill": "node scripts/run-video-crawl.mjs backfill",
+    "crawl:server:latest": "node scripts/run-video-crawl.mjs latest"
+  },
+  "dependencies": {
+    "playwright": "^1.45.3"
   }
 }
