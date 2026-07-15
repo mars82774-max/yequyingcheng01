@@ -340,7 +340,11 @@ async function fetchTextWithBrowser(url, ctx) {
   try {
     result = await ctx.browserFetcher.fetchText(url);
   } catch (error) {
-    throw new SourceStopError(`Browser request failed: ${error?.message || error}. Run npm run browser:verify if verification is required.`, {
+    const message = String(error?.message || error);
+    const stopReason = message.includes("CHALLENGE_TIMEOUT")
+      ? `CHALLENGE_TIMEOUT: ${url}. Cloudflare challenge did not clear within the browser wait window.`
+      : `Browser request failed: ${message}. Run npm run browser:verify if verification is required.`;
+    throw new SourceStopError(stopReason, {
       retryable: true,
       blocked: true,
       url,
