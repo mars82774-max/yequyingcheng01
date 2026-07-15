@@ -15,6 +15,7 @@ const maxNewItems = Number(process.env.MAX_NEW_ITEMS || 20);
 const maxOldItems = Number(process.env.MAX_OLD_ITEMS || 24);
 const delayMs = Number(process.env.CRAWL_DELAY_MS || 800);
 const crawlMode = (process.env.CRAWL_MODE || "backfill").toLowerCase();
+const sourceCookie = process.env.J_AV_COOKIE || process.env.CRAWL_COOKIE || "";
 
 const state = await readState();
 const now = new Date().toISOString();
@@ -24,6 +25,19 @@ console.log(`[crawl] source=${baseUrl}`);
 console.log(`[crawl] videosOutput=${videosOutput}`);
 console.log(`[crawl] stateOutput=${stateOutput}`);
 console.log(`[crawl] existingVideos=${mockVideos.length}`);
+console.log(`[crawl] sourceCookieConfigured=${Boolean(sourceCookie)}`);
+console.log("[crawl] state=" + JSON.stringify({
+  latestLastRunAt: state.latestLastRunAt || "",
+  latestLastNewCount: state.latestLastNewCount || 0,
+  backfillPage: state.backfillPage || 0,
+  backfillCursor: state.backfillCursor || "",
+  totalVideos: state.totalVideos || mockVideos.length,
+  lastBackfillRunAt: state.lastBackfillRunAt || "",
+  lastBackfillFetchedCount: state.lastBackfillFetchedCount || 0,
+  lastBackfillDuplicateCount: state.lastBackfillDuplicateCount || 0,
+  lastBackfillAddedCount: state.lastBackfillAddedCount || 0,
+  lastBackfillStopReason: state.lastBackfillStopReason || ""
+}));
 
 if (crawlMode === "latest") {
   const latestResult = await crawlLatest(mockVideos);
@@ -274,7 +288,7 @@ async function crawlBackfill(currentVideos, crawlState) {
         nextCursor = parseNextUrl(html, pageUrl) || pageUrl;
         nextPage = currentPage + 1;
         stopReason = "max_old_items";
-        return { items, nextCursor, nextPage, pagesDone, fetchedCount, duplicateCount, listFoundCount, existingCount, candidateCount, parsedCount, parseFailureCount, stopReason };
+        return { items, nextCursor, nextPage, pagesDone, fetchedCount, duplicateCount, listFoundCount, existingCount, candidateCount, parsedCount, parseFailureCount, hasMore: Boolean(nextCursor), stopReason };
       }
       await sleep(delayMs);
     }
@@ -282,6 +296,8 @@ async function crawlBackfill(currentVideos, crawlState) {
     nextCursor = parseNextUrl(html, pageUrl);
     nextPage = currentPage + 1;
     stopReason = nextCursor ? "next_cursor" : "no_next_cursor";
+    console.log(`[backfill] nextUrl=${nextCursor || ""}`);
+    console.log(`[backfill] hasMore=${Boolean(nextCursor)}`);
     pageUrl = nextCursor;
     currentPage = nextPage;
     await sleep(delayMs);
@@ -289,7 +305,7 @@ async function crawlBackfill(currentVideos, crawlState) {
 
   if (pageUrl && seenPages.has(pageUrl)) stopReason = "repeated_cursor";
   if (maxBackfillPages > 0 && pagesDone >= maxBackfillPages) stopReason = "max_backfill_pages";
-  return { items, nextCursor: nextCursor || "", nextPage, pagesDone, fetchedCount, duplicateCount, listFoundCount, existingCount, candidateCount, parsedCount, parseFailureCount, stopReason };
+  return { items, nextCursor: nextCursor || "", nextPage, pagesDone, fetchedCount, duplicateCount, listFoundCount, existingCount, candidateCount, parsedCount, parseFailureCount, hasMore: Boolean(nextCursor), stopReason };
 }
 
 function logBackfillSummary(result, crawlState) {
@@ -304,6 +320,7 @@ function logBackfillSummary(result, crawlState) {
   console.log(`[backfill] parseFailed=${result.parseFailureCount || 0}`);
   console.log(`[backfill] finalWriteCount=${result.items.length}`);
   console.log(`[backfill] nextCursor=${crawlState.backfillCursor || ""}`);
+  console.log(`[backfill] hasMore=${Boolean(result.hasMore)}`);
   console.log(`[backfill] stopReason=${result.stopReason}`);
 }
 
@@ -461,16 +478,23 @@ async function writeVideos(items) {
 
 async function fetchText(url) {
   console.log(`[crawl] fetch=${url}`);
+  const headers = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "zh-TW,zh;q=0.9,en;q=0.8",
+    "Cache-Control": "no-cache",
+    "Referer": baseUrl
+  };
+  if (sourceCookie) headers.Cookie = sourceCookie;
   const response = await fetch(url, {
-    headers: {
-      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124 Safari/537.36",
-      "Accept-Language": "zh-TW,zh;q=0.9,en;q=0.8"
-    }
+    headers
   });
   console.log(`[crawl] httpStatus=${response.status} ok=${response.ok} url=${url}`);
-  if (!response.ok) throw new Error(`Fetch failed ${response.status}: ${url}`);
   const text = await response.text();
+  const title = cleanText(text.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] || "");
+  console.log(`[crawl] responseLength=${text.length} title=${title || ""}`);
   assertNormalHtml(text, url, response.status);
+  if (!response.ok) throw new Error(`Fetch failed ${response.status}: ${url} title=${title || ""} length=${text.length}`);
   return text;
 }
 
@@ -517,9 +541,10 @@ async function parseVideoPageSafely(url, scope = "latest") {
 function assertNormalHtml(html, url, status) {
   const text = String(html || "");
   const lower = text.toLowerCase();
+  const title = cleanText(text.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] || "");
   if (!text.trim()) throw new Error(`Empty response body: status=${status} url=${url}`);
   if (lower.includes("cf-browser-verification") || lower.includes("just a moment") || lower.includes("captcha")) {
-    throw new Error(`Blocked or challenge response: status=${status} url=${url}`);
+    throw new Error(`Blocked or challenge response: status=${status} title=${title || ""} url=${url}. Set J_AV_COOKIE/CRAWL_COOKIE when the source requires a browser challenge cookie.`);
   }
 }
 

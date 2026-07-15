@@ -18,6 +18,7 @@ jobs:
     timeout-minutes: 30
     env:
       CRAWL_MODE: latest
+      J_AV_COOKIE: ${{ secrets.J_AV_COOKIE }}
 
     steps:
       - name: Start timer

@@ -20,6 +20,7 @@ jobs:
       CRAWL_MODE: backfill
       MAX_OLD_ITEMS: 24
       MAX_BACKFILL_PAGES: 20
+      J_AV_COOKIE: ${{ secrets.J_AV_COOKIE }}
 
     steps:
       - name: Start timer
