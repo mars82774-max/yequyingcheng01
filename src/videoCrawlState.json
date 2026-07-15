@@ -11,6 +11,16 @@
   "lastBackfillDuplicateCount": 100,
   "lastBackfillAddedCount": 0,
   "lastBackfillStopReason": "max_backfill_pages",
+  "sourceHealth": {
+    "jAv": {
+      "lastSuccessAt": "",
+      "lastFailureAt": "2026-07-15T14:42:32.596Z",
+      "consecutiveFailures": 3,
+      "lastHttpStatus": 0,
+      "lastError": "Source request failed: fetch failed",
+      "blockedUntil": "2026-07-16T14:42:32.596Z"
+    }
+  },
   "latestLastSourceId": "entry260712-145055",
   "latestLastSourceUrl": "https://j-av.com/video/index.php?entry=entry260712-145055",
   "latestLastSourceTitle": "好色素人女大生正式出道初體驗絕頂3連發 佐佐倉日和"

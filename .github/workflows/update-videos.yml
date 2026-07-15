@@ -20,6 +20,8 @@ jobs:
       CRAWL_MODE: backfill
       MAX_OLD_ITEMS: 24
       MAX_BACKFILL_PAGES: 20
+      SOURCE_FAILURE_PAUSE_THRESHOLD: 3
+      SOURCE_BLOCKED_PAUSE_HOURS: 24
       J_AV_COOKIE: ${{ secrets.J_AV_COOKIE }}
 
     steps:

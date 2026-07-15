@@ -1,366 +1,285 @@
-﻿import { readFile, writeFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { mockVideos } from "../src/mockVideos.js";
+import { createJavAdapter } from "./video-sources/j-av.mjs";
+import { createSourceTemplateAdapter } from "./video-sources/template.mjs";
+import { isSourceStopError } from "./video-sources/source-errors.mjs";
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const videosOutput = join(root, "src", "mockVideos.js");
 const stateOutput = join(root, "src", "videoCrawlState.json");
-const baseUrl = "https://j-av.com/video/index.php";
-const maxLatestPages = Number(process.env.MAX_LATEST_PAGES || 3);
-const maxBackfillPages = Number(process.env.MAX_BACKFILL_PAGES || 0);
-const maxBackfillRepairPages = Number(process.env.MAX_BACKFILL_REPAIR_PAGES || 80);
-const backfillRepairSkipPages = Number(process.env.BACKFILL_REPAIR_SKIP_PAGES || 3);
-const maxNewItems = Number(process.env.MAX_NEW_ITEMS || 20);
-const maxOldItems = Number(process.env.MAX_OLD_ITEMS || 24);
-const delayMs = Number(process.env.CRAWL_DELAY_MS || 800);
 const crawlMode = (process.env.CRAWL_MODE || "backfill").toLowerCase();
-const sourceCookie = process.env.J_AV_COOKIE || process.env.CRAWL_COOKIE || "";
+const dryRun = ["1", "true", "yes"].includes(String(process.env.CRAWL_DRY_RUN || "").toLowerCase());
+const failurePauseThreshold = Number(process.env.SOURCE_FAILURE_PAUSE_THRESHOLD || 3);
+const blockedPauseHours = Number(process.env.SOURCE_BLOCKED_PAUSE_HOURS || 24);
+const now = new Date();
+
+const sources = [
+  createJavAdapter({
+    defaultCategory: defaultList("category"),
+    defaultTags: defaultList("tags")
+  }),
+  createSourceTemplateAdapter()
+].filter((source) => source.enabled !== false);
 
 const state = await readState();
-const now = new Date().toISOString();
+state.sourceHealth = state.sourceHealth || {};
 
 console.log(`[crawl] mode=${crawlMode}`);
-console.log(`[crawl] source=${baseUrl}`);
+console.log(`[crawl] dryRun=${dryRun}`);
 console.log(`[crawl] videosOutput=${videosOutput}`);
 console.log(`[crawl] stateOutput=${stateOutput}`);
 console.log(`[crawl] existingVideos=${mockVideos.length}`);
-console.log(`[crawl] sourceCookieConfigured=${Boolean(sourceCookie)}`);
-console.log("[crawl] state=" + JSON.stringify({
-  latestLastRunAt: state.latestLastRunAt || "",
-  latestLastNewCount: state.latestLastNewCount || 0,
-  backfillPage: state.backfillPage || 0,
-  backfillCursor: state.backfillCursor || "",
-  totalVideos: state.totalVideos || mockVideos.length,
-  lastBackfillRunAt: state.lastBackfillRunAt || "",
-  lastBackfillFetchedCount: state.lastBackfillFetchedCount || 0,
-  lastBackfillDuplicateCount: state.lastBackfillDuplicateCount || 0,
-  lastBackfillAddedCount: state.lastBackfillAddedCount || 0,
-  lastBackfillStopReason: state.lastBackfillStopReason || ""
-}));
+console.log(`[crawl] sources=${sources.map((source) => source.sourceName).join(",")}`);
+console.log("[crawl] state=" + JSON.stringify(crawlStateSummary(state)));
 
-if (crawlMode === "latest") {
-  const latestResult = await crawlLatest(mockVideos);
-  const previousCount = mockVideos.length;
-
-  state.latestLastRunAt = now;
-  state.latestLastNewCount = latestResult.items.length;
-  state.latestLastSourceId = latestResult.sourceFirstItem?.id || "";
-  state.latestLastSourceUrl = latestResult.sourceFirstItem?.source_url || "";
-  state.latestLastSourceTitle = latestResult.sourceFirstItem?.title || "";
-
-  logLatestSummary(latestResult);
-
-  if (latestResult.items.length > 0) {
-    const merged = dedupeVideos([...latestResult.sourceItems, ...latestResult.items, ...mockVideos]);
-    state.totalVideos = merged.length;
-    updateOldestState(state, merged);
-    console.log(`[crawl] outputBefore=${previousCount}`);
-    console.log(`[crawl] outputAfter=${merged.length}`);
-    await writeVideos(merged);
-    await writeState(state);
-    console.log(`Updated latest videos: new=${latestResult.items.length} total=${merged.length}`);
-    process.exit(0);
-  }
-
-  console.log(`[crawl] outputBefore=${previousCount}`);
-  console.log(`[crawl] outputAfter=${previousCount}`);
-  console.log(`No new latest videos. pages=${latestResult.pagesDone} checked=${latestResult.fetchedCount} duplicates=${latestResult.duplicateCount}`);
-  process.exit(0);
-}
-
-if (crawlMode !== "backfill") {
+if (!["latest", "backfill"].includes(crawlMode)) {
   throw new Error(`Unsupported CRAWL_MODE: ${crawlMode}. Use "backfill" or "latest".`);
 }
 
-const backfillResult = await crawlBackfill(mockVideos, state);
-const previousBackfillCursor = state.backfillCursor;
-state.lastBackfillRunAt = now;
-state.backfillPage = backfillResult.nextPage;
-state.backfillCursor = backfillResult.nextCursor;
-state.lastBackfillFetchedCount = backfillResult.fetchedCount;
-state.lastBackfillDuplicateCount = backfillResult.duplicateCount;
-state.lastBackfillAddedCount = backfillResult.items.length;
-state.lastBackfillStopReason = backfillResult.stopReason;
+const previousCount = mockVideos.length;
+const known = createDedupeIndex(mockVideos);
+const collectedItems = [];
+const collectedSourceItems = [];
+const runResults = [];
+let healthChanged = false;
+let cursorChanged = false;
 
-if (backfillResult.items.length > 0) {
-  const merged = dedupeVideos([...mockVideos, ...backfillResult.items]);
+for (const source of sources) {
+  const health = sourceHealth(state, source);
+  const skipReason = sourceSkipReason(source, health, now);
+  if (skipReason) {
+    console.log(`[source:${source.sourceName}] skipped reason=${skipReason} blockedUntil=${health.blockedUntil || ""}`);
+    runResults.push(emptyResult(source.sourceName, skipReason));
+    continue;
+  }
+
+  const sourceContext = source.createContext(process.env);
+  const ctx = {
+    ...sourceContext,
+    sourceName: source.sourceName,
+    currentVideos: mockVideos,
+    state,
+    known,
+    duplicateReason,
+    addToIndex
+  };
+
+  console.log(`[source:${source.sourceName}] start cookieConfigured=${Boolean(sourceContext.cookie)}`);
+  try {
+    const result = crawlMode === "latest"
+      ? await source.crawlLatest(ctx)
+      : await source.crawlBackfill(ctx);
+    runResults.push(result);
+
+    healthChanged = recordSourceSuccess(health, now) || healthChanged;
+
+    for (const item of result.items) {
+      collectedItems.push(normalizeStoredVideo(item));
+    }
+    for (const item of result.sourceItems || []) {
+      collectedSourceItems.push(normalizeStoredVideo(item));
+    }
+
+    if (crawlMode === "backfill" && source.key === "jAv") {
+      cursorChanged = updateBackfillStateFromResult(state, result);
+    }
+    if (crawlMode === "latest" && source.key === "jAv") {
+      updateLatestStateFromResult(state, result);
+    }
+
+    logRunSummary(result);
+  } catch (error) {
+    if (!isSourceStopError(error)) throw error;
+    console.log(`[source:${source.sourceName}] stopped reason=${error.message}`);
+    console.log(`[source:${source.sourceName}] httpStatus=${error.httpStatus || 0} blocked=${Boolean(error.blocked)} retryable=${Boolean(error.retryable)}`);
+    recordSourceFailure(health, error, now);
+    healthChanged = true;
+    runResults.push(emptyResult(source.sourceName, error.message, error));
+    break;
+  }
+}
+
+let merged = mockVideos;
+if (collectedItems.length > 0 || (crawlMode === "latest" && collectedSourceItems.length > 0)) {
+  merged = crawlMode === "latest"
+    ? dedupeVideos([...collectedSourceItems, ...collectedItems, ...mockVideos])
+    : dedupeVideos([...mockVideos, ...collectedItems]);
   state.totalVideos = merged.length;
   updateOldestState(state, merged);
+}
+
+if (crawlMode === "latest") {
+  state.latestLastRunAt = now.toISOString();
+  state.latestLastNewCount = collectedItems.length;
+}
+
+console.log(`[crawl] outputBefore=${previousCount}`);
+console.log(`[crawl] outputAfter=${merged.length}`);
+console.log(`[crawl] addedCount=${merged.length - previousCount}`);
+console.log(`[crawl] totalVideoCount=${merged.length}`);
+
+if (dryRun) {
+  console.log("[crawl] dryRun=true skip writes");
+  process.exit(0);
+}
+
+if (merged.length !== previousCount || collectedItems.length > 0) {
   await writeVideos(merged);
   await writeState(state);
-  logBackfillSummary(backfillResult, state);
-  console.log(`Backfilled old videos: added=${backfillResult.items.length} total=${merged.length}`);
+  console.log(`[crawl] wrote videos/state`);
   process.exit(0);
 }
 
-logBackfillSummary(backfillResult, state);
-if (backfillProgressChanged(previousBackfillCursor, state)) {
+if (healthChanged || cursorChanged) {
   await writeState(state);
-  console.log("Saved backfill cursor progress without new videos.");
+  console.log("[crawl] wrote state only");
   process.exit(0);
 }
-console.log("No old video updates");
 
-async function crawlLatest(currentVideos) {
-  const known = createDedupeIndex(currentVideos);
-  const items = [];
-  const seenPages = new Set();
-  let pageUrl = baseUrl;
-  let pagesDone = 0;
-  let fetchedCount = 0;
-  let duplicateCount = 0;
-  let listFoundCount = 0;
-  let existingCount = 0;
-  let candidateCount = 0;
-  let parsedCount = 0;
-  let parseFailureCount = 0;
-  let sourceFirstItem = null;
-  const sourceItems = [];
+console.log(crawlMode === "latest" ? "No new latest videos" : "No old video updates");
 
-  while (pageUrl && !seenPages.has(pageUrl) && (maxLatestPages <= 0 || pagesDone < maxLatestPages)) {
-    seenPages.add(pageUrl);
-    const html = await fetchText(pageUrl);
-    pagesDone += 1;
-    const entryUrls = parseEntryUrls(html, pageUrl);
-    assertEntriesFound(entryUrls, html, pageUrl);
-    listFoundCount += entryUrls.length;
-    console.log(`[crawl] page=${pagesDone} sourceUrl=${pageUrl}`);
-    console.log(`[crawl] listFound=${entryUrls.length}`);
-    let pageNewCount = 0;
-    let pageDuplicateCount = 0;
-
-    for (const entryUrl of entryUrls) {
-      fetchedCount += 1;
-      const stub = { source_url: normalizeEntryUrl(entryUrl), id: entryIdFromUrl(entryUrl) };
-      const stubDuplicateReason = duplicateReason(known, stub);
-      if (stubDuplicateReason) {
-        duplicateCount += 1;
-        existingCount += 1;
-        pageDuplicateCount += 1;
-        logSkip("latest", stub, stubDuplicateReason);
-        if (!sourceFirstItem) {
-          const firstItem = await parseVideoPageSafely(entryUrl);
-          if (firstItem) {
-            sourceFirstItem = firstItem;
-            sourceItems.push(firstItem);
-            logLatestSourceItem(firstItem);
-          } else {
-            parseFailureCount += 1;
-          }
-        }
-        continue;
-      }
-
-      candidateCount += 1;
-      const item = await parseVideoPageSafely(entryUrl);
-      if (!item) {
-        parseFailureCount += 1;
-        continue;
-      }
-      parsedCount += 1;
-      if (!sourceFirstItem) {
-        sourceFirstItem = item;
-        logLatestSourceItem(item);
-      }
-      sourceItems.push(item);
-
-      const itemDuplicateReason = duplicateReason(known, item);
-      if (itemDuplicateReason) {
-        duplicateCount += 1;
-        existingCount += 1;
-        pageDuplicateCount += 1;
-        logSkip("latest", item, itemDuplicateReason);
-        continue;
-      }
-
-      items.push(item);
-      addToIndex(known, item);
-      pageNewCount += 1;
-      console.log(`[latest] ${item.id} ${item.date} ${item.title.slice(0, 42)}`);
-
-      if (maxNewItems > 0 && items.length >= maxNewItems) {
-        return { items, sourceItems, pagesDone, fetchedCount, duplicateCount, listFoundCount, existingCount, candidateCount, parsedCount, parseFailureCount, sourceFirstItem };
-      }
-      await sleep(delayMs);
-    }
-
-    if (pageDuplicateCount > 0 && pageNewCount === 0) {
-      console.log(`[crawl] stop=duplicate_page_without_new page=${pagesDone}`);
-      break;
-    }
-
-    pageUrl = parseNextUrl(html, pageUrl);
-    await sleep(delayMs);
-  }
-
-  return { items, sourceItems, pagesDone, fetchedCount, duplicateCount, listFoundCount, existingCount, candidateCount, parsedCount, parseFailureCount, sourceFirstItem };
+function sourceHealth(crawlState, source) {
+  crawlState.sourceHealth[source.key] = {
+    lastSuccessAt: "",
+    lastFailureAt: "",
+    consecutiveFailures: 0,
+    lastHttpStatus: 0,
+    lastError: "",
+    blockedUntil: "",
+    ...(crawlState.sourceHealth[source.key] || {})
+  };
+  return crawlState.sourceHealth[source.key];
 }
 
-async function crawlBackfill(currentVideos, crawlState) {
-  const known = createDedupeIndex(currentVideos);
-  const items = [];
-  const seenPages = new Set();
-  const oldestUrl = oldestSourceUrl(currentVideos);
-  let pageUrl = crawlState.backfillCursor || oldestUrl || "";
-  let currentPage = Number(crawlState.backfillPage || 2);
-
-  if (crawlState.backfillCursor && !hasListCursorParams(crawlState.backfillCursor)) {
-    console.log(`[backfill] repairCursor reason=missing_list_cursor_params cursor=${crawlState.backfillCursor}`);
-    const repair = await findBackfillRepairCursor(known);
-    if (repair.url) {
-      pageUrl = repair.url;
-      currentPage = repair.page;
-      console.log(`[backfill] repairCursor page=${repair.page} url=${repair.url}`);
-    }
-  } else if (oldestUrl && !crawlState.backfillCursor) {
-    const oldestHtml = await fetchText(oldestUrl);
-    pageUrl = parseNextUrl(oldestHtml, oldestUrl) || oldestUrl;
-    await sleep(delayMs);
-  } else if (!pageUrl) {
-    const firstPageHtml = await fetchText(baseUrl);
-    pageUrl = parseNextUrl(firstPageHtml, baseUrl);
-    currentPage = 2;
-    await sleep(delayMs);
-  }
-
-  let pagesDone = 0;
-  let nextCursor = pageUrl;
-  let nextPage = currentPage;
-  let fetchedCount = 0;
-  let duplicateCount = 0;
-  let listFoundCount = 0;
-  let existingCount = 0;
-  let candidateCount = 0;
-  let parsedCount = 0;
-  let parseFailureCount = 0;
-  let stopReason = "no_next_cursor";
-
-  console.log(`[backfill] startCursor=${pageUrl || ""}`);
-  console.log(`[backfill] startPage=${currentPage}`);
-  console.log(`[backfill] maxOldItems=${maxOldItems}`);
-  console.log(`[backfill] maxBackfillPages=${maxBackfillPages}`);
-
-  while (pageUrl && !seenPages.has(pageUrl) && (maxBackfillPages <= 0 || pagesDone < maxBackfillPages)) {
-    seenPages.add(pageUrl);
-    const html = await fetchText(pageUrl);
-    pagesDone += 1;
-    const pageEntryId = entryIdFromUrl(pageUrl);
-    const entryUrls = parseContentEntryUrls(html, pageUrl);
-    listFoundCount += entryUrls.length;
-    console.log(`[backfill] page=${pagesDone} sourceUrl=${pageUrl}`);
-    console.log(`[backfill] listFound=${entryUrls.length}`);
-
-    const pageCandidates = pageEntryId && !hasListCursorParams(pageUrl) ? [normalizeEntryUrl(pageUrl)] : entryUrls;
-
-    for (const entryUrl of pageCandidates) {
-      fetchedCount += 1;
-      const stub = { source_url: normalizeEntryUrl(entryUrl), id: entryIdFromUrl(entryUrl) };
-      const stubDuplicateReason = duplicateReason(known, stub);
-      if (stubDuplicateReason) {
-        duplicateCount += 1;
-        existingCount += 1;
-        logSkip("backfill", stub, stubDuplicateReason);
-        continue;
-      }
-
-      candidateCount += 1;
-      const item = await parseVideoPageSafely(entryUrl, "backfill");
-      if (!item) {
-        parseFailureCount += 1;
-        continue;
-      }
-      parsedCount += 1;
-
-      const itemDuplicateReason = duplicateReason(known, item);
-      if (itemDuplicateReason) {
-        duplicateCount += 1;
-        existingCount += 1;
-        logSkip("backfill", item, itemDuplicateReason);
-        continue;
-      }
-
-      items.push(item);
-      addToIndex(known, item);
-      console.log(`[backfill] ${item.id} ${item.date} ${item.title.slice(0, 42)}`);
-
-      if (maxOldItems > 0 && items.length >= maxOldItems) {
-        nextCursor = parseNextUrl(html, pageUrl) || pageUrl;
-        nextPage = currentPage + 1;
-        stopReason = "max_old_items";
-        return { items, nextCursor, nextPage, pagesDone, fetchedCount, duplicateCount, listFoundCount, existingCount, candidateCount, parsedCount, parseFailureCount, hasMore: Boolean(nextCursor), stopReason };
-      }
-      await sleep(delayMs);
-    }
-
-    nextCursor = parseNextUrl(html, pageUrl);
-    nextPage = currentPage + 1;
-    stopReason = nextCursor ? "next_cursor" : "no_next_cursor";
-    console.log(`[backfill] nextUrl=${nextCursor || ""}`);
-    console.log(`[backfill] hasMore=${Boolean(nextCursor)}`);
-    pageUrl = nextCursor;
-    currentPage = nextPage;
-    await sleep(delayMs);
-  }
-
-  if (pageUrl && seenPages.has(pageUrl)) stopReason = "repeated_cursor";
-  if (maxBackfillPages > 0 && pagesDone >= maxBackfillPages) stopReason = "max_backfill_pages";
-  return { items, nextCursor: nextCursor || "", nextPage, pagesDone, fetchedCount, duplicateCount, listFoundCount, existingCount, candidateCount, parsedCount, parseFailureCount, hasMore: Boolean(nextCursor), stopReason };
+function sourceSkipReason(source, health, at) {
+  if (!source.enabled) return "disabled";
+  if (health.blockedUntil && Date.parse(health.blockedUntil) > at.getTime()) return "source_paused";
+  return "";
 }
 
-function logBackfillSummary(result, crawlState) {
-  console.log(`[backfill] nextPage=${crawlState.backfillPage}`);
-  console.log(`[backfill] pagesScanned=${result.pagesDone}`);
-  console.log(`[backfill] listFound=${result.listFoundCount || 0}`);
-  console.log(`[backfill] fetched=${result.fetchedCount}`);
-  console.log(`[backfill] existing=${result.existingCount || 0}`);
-  console.log(`[backfill] candidates=${result.candidateCount || 0}`);
-  console.log(`[backfill] parsed=${result.parsedCount || 0}`);
-  console.log(`[backfill] duplicates=${result.duplicateCount}`);
-  console.log(`[backfill] parseFailed=${result.parseFailureCount || 0}`);
-  console.log(`[backfill] finalWriteCount=${result.items.length}`);
-  console.log(`[backfill] nextCursor=${crawlState.backfillCursor || ""}`);
-  console.log(`[backfill] hasMore=${Boolean(result.hasMore)}`);
-  console.log(`[backfill] stopReason=${result.stopReason}`);
+function recordSourceSuccess(health, at) {
+  const changed = Boolean(health.consecutiveFailures || health.lastError || health.blockedUntil || !health.lastSuccessAt);
+  health.lastSuccessAt = at.toISOString();
+  health.consecutiveFailures = 0;
+  health.lastHttpStatus = 0;
+  health.lastError = "";
+  health.blockedUntil = "";
+  return changed;
 }
 
-function backfillProgressChanged(previousCursor, crawlState) {
-  return Boolean(crawlState.backfillCursor && crawlState.backfillCursor !== previousCursor);
-}
-
-async function findBackfillRepairCursor(known) {
-  let pageUrl = baseUrl;
-  let page = 1;
-  while (pageUrl && page <= maxBackfillRepairPages) {
-    const html = await fetchText(pageUrl);
-    const entryUrls = parseContentEntryUrls(html, pageUrl);
-    const missingCount = page > backfillRepairSkipPages
-      ? entryUrls.filter((entryUrl) => !duplicateReason(known, { source_url: normalizeEntryUrl(entryUrl), id: entryIdFromUrl(entryUrl) })).length
-      : 0;
-    console.log(`[backfill] repairScan page=${page} entries=${entryUrls.length} missing=${missingCount} url=${pageUrl}`);
-    if (missingCount > 0) return { url: pageUrl, page };
-    pageUrl = parseNextUrl(html, pageUrl);
-    page += 1;
+function recordSourceFailure(health, error, at) {
+  health.lastFailureAt = at.toISOString();
+  health.consecutiveFailures = Number(health.consecutiveFailures || 0) + 1;
+  health.lastHttpStatus = Number(error.httpStatus || 0);
+  health.lastError = String(error.message || error).slice(0, 500);
+  if (health.consecutiveFailures >= failurePauseThreshold) {
+    const blockedUntil = new Date(at.getTime() + blockedPauseHours * 60 * 60 * 1000);
+    health.blockedUntil = blockedUntil.toISOString();
+    console.log(`[source] paused until ${health.blockedUntil}`);
+  } else if (error.blocked) {
+    console.log(`[source] blocked this run; consecutiveFailures=${health.consecutiveFailures}/${failurePauseThreshold}`);
   }
-  return { url: "", page: 0 };
+}
+
+function updateLatestStateFromResult(crawlState, result) {
+  const first = result.sourceFirstItem;
+  crawlState.latestLastSourceId = first?.id || crawlState.latestLastSourceId || "";
+  crawlState.latestLastSourceUrl = first?.sourceUrl || first?.source_url || crawlState.latestLastSourceUrl || "";
+  crawlState.latestLastSourceTitle = first?.title || crawlState.latestLastSourceTitle || "";
+}
+
+function updateBackfillStateFromResult(crawlState, result) {
+  if (!result.items.length) return false;
+  const previousCursor = crawlState.backfillCursor || "";
+  crawlState.lastBackfillRunAt = now.toISOString();
+  crawlState.backfillPage = result.nextPage || crawlState.backfillPage;
+  crawlState.backfillCursor = result.nextCursor || crawlState.backfillCursor;
+  crawlState.lastBackfillFetchedCount = result.fetchedCount;
+  crawlState.lastBackfillDuplicateCount = result.duplicateCount;
+  crawlState.lastBackfillAddedCount = result.items.length;
+  crawlState.lastBackfillStopReason = result.stopReason;
+  return previousCursor !== crawlState.backfillCursor;
+}
+
+function logRunSummary(result) {
+  console.log(`[crawl:${result.sourceName}] pagesScanned=${result.pagesDone}`);
+  console.log(`[crawl:${result.sourceName}] fetched=${result.fetchedCount}`);
+  console.log(`[crawl:${result.sourceName}] listFound=${result.listFoundCount || 0}`);
+  console.log(`[crawl:${result.sourceName}] existing=${result.existingCount || 0}`);
+  console.log(`[crawl:${result.sourceName}] candidates=${result.candidateCount || 0}`);
+  console.log(`[crawl:${result.sourceName}] parsed=${result.parsedCount || 0}`);
+  console.log(`[crawl:${result.sourceName}] duplicates=${result.duplicateCount}`);
+  console.log(`[crawl:${result.sourceName}] parseFailed=${result.parseFailureCount || 0}`);
+  console.log(`[crawl:${result.sourceName}] added=${result.items.length}`);
+  console.log(`[crawl:${result.sourceName}] nextUrl=${result.nextCursor || ""}`);
+  console.log(`[crawl:${result.sourceName}] hasMore=${Boolean(result.hasMore)}`);
+  console.log(`[crawl:${result.sourceName}] stopReason=${result.stopReason}`);
+}
+
+function emptyResult(sourceName, stopReason, error = null) {
+  return {
+    sourceName,
+    items: [],
+    sourceItems: [],
+    pagesDone: 0,
+    fetchedCount: 0,
+    duplicateCount: 0,
+    listFoundCount: 0,
+    existingCount: 0,
+    candidateCount: 0,
+    parsedCount: 0,
+    parseFailureCount: 0,
+    nextCursor: "",
+    nextPage: 0,
+    hasMore: false,
+    stopReason,
+    error
+  };
+}
+
+function normalizeStoredVideo(video) {
+  const sourceUrl = video.sourceUrl || video.source_url || "";
+  const playUrl = video.playUrl || video.embed_url || "";
+  const thumbnail = video.thumbnail || video.cover || video.cover_source || "";
+  const publishedAt = video.publishedAt || video.date || video.createdAt || "";
+  const sourceName = video.sourceName || video.provider || "unknown";
+  return {
+    ...video,
+    id: video.id,
+    slug: video.slug || video.id,
+    title: video.title || video.id,
+    thumbnail,
+    duration: video.duration || "",
+    sourceUrl,
+    playUrl,
+    publishedAt,
+    actors: Array.isArray(video.actors) ? video.actors : [],
+    tags: Array.isArray(video.tags) ? video.tags : [],
+    sourceName,
+    source_url: sourceUrl,
+    embed_url: playUrl,
+    cover_source: thumbnail,
+    cover: thumbnail,
+    date: publishedAt,
+    category: Array.isArray(video.category) ? video.category : defaultList("category"),
+    type: video.type || "iframe",
+    provider: video.provider || sourceName
+  };
 }
 
 function updateOldestState(crawlState, videos) {
   const oldest = oldestVideo(videos);
   crawlState.oldestVideoId = oldest?.id || "";
-  crawlState.oldestVideoDate = oldest?.date || "";
+  crawlState.oldestVideoDate = oldest?.date || oldest?.publishedAt || "";
 }
 
 function oldestVideo(videos) {
   return [...videos]
-    .filter((video) => video?.id || video?.date)
+    .filter((video) => video?.id || video?.date || video?.publishedAt)
     .sort((a, b) => compareVideoAge(a, b))
     .at(-1);
-}
-
-function oldestSourceUrl(videos) {
-  const oldest = oldestVideo(videos);
-  return oldest?.source_url || oldest?.sourceUrl || "";
 }
 
 function compareVideoAge(a, b) {
@@ -371,7 +290,7 @@ function compareVideoAge(a, b) {
 }
 
 function videoDateValue(video) {
-  const raw = String(video?.date || video?.publishedAt || video?.createdAt || "").trim();
+  const raw = String(video?.publishedAt || video?.date || video?.createdAt || "").trim();
   const numericDate = raw.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
   if (numericDate) {
     const [, year, month, day] = numericDate;
@@ -383,13 +302,11 @@ function videoDateValue(video) {
 function dedupeVideos(videos) {
   const index = createEmptyDedupeIndex();
   const result = [];
-
   for (const video of videos) {
     if (!video || hasDuplicate(index, video)) continue;
     result.push(video);
     addToIndex(index, video);
   }
-
   return result;
 }
 
@@ -454,12 +371,13 @@ async function readState() {
     lastBackfillFetchedCount: 0,
     lastBackfillDuplicateCount: 0,
     lastBackfillAddedCount: 0,
-    lastBackfillStopReason: ""
+    lastBackfillStopReason: "",
+    sourceHealth: {}
   };
 
   try {
     const existing = JSON.parse(await readFile(stateOutput, "utf-8"));
-    return { ...fallback, ...existing };
+    return { ...fallback, ...existing, sourceHealth: existing.sourceHealth || {} };
   } catch (error) {
     if (error?.code !== "ENOENT") throw error;
     return fallback;
@@ -476,237 +394,20 @@ async function writeVideos(items) {
   await writeFile(videosOutput, source, "utf-8");
 }
 
-async function fetchText(url) {
-  console.log(`[crawl] fetch=${url}`);
-  const headers = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126 Safari/537.36",
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-    "Accept-Language": "zh-TW,zh;q=0.9,en;q=0.8",
-    "Cache-Control": "no-cache",
-    "Referer": baseUrl
-  };
-  if (sourceCookie) headers.Cookie = sourceCookie;
-  const response = await fetch(url, {
-    headers
-  });
-  console.log(`[crawl] httpStatus=${response.status} ok=${response.ok} url=${url}`);
-  const text = await response.text();
-  const title = cleanText(text.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] || "");
-  console.log(`[crawl] responseLength=${text.length} title=${title || ""}`);
-  assertNormalHtml(text, url, response.status);
-  if (!response.ok) throw new Error(`Fetch failed ${response.status}: ${url} title=${title || ""} length=${text.length}`);
-  return text;
-}
-
-async function parseVideoPage(url) {
-  const html = await fetchText(url);
-  const embedUrl = normalizeUrl(findFirst(html, /<iframe[^>]+src=["']([^"']+)["']/gi, (value) => value.includes("a-big.com/player")), url);
-  const cover = coverFromEmbed(embedUrl);
-  const title = cleanText(
-    findFirst(html, /<div[^>]+class=["'][^"']*blog_subject[^"']*["'][^>]*>([\s\S]*?)<\/div>/i) ||
-      findFirst(html, /<title[^>]*>([\s\S]*?)<\/title>/i)?.split(" - J-AV")[0] ||
-      entryIdFromUrl(url)
-  );
-  const date = cleanText(findFirst(html, /<div[^>]+class=["'][^"']*blog_date[^"']*["'][^>]*>([\s\S]*?)<\/div>/i));
-  const id = entryIdFromUrl(url);
-  if (!id || !title || !embedUrl) {
-    throw new Error(`Video parse failed: id=${id || ""} title=${title || ""} embed=${embedUrl || ""} url=${url}`);
-  }
-
+function crawlStateSummary(crawlState) {
   return {
-    id,
-    slug: id,
-    title,
-    source_url: normalizeEntryUrl(url),
-    embed_url: embedUrl,
-    cover_source: cover,
-    cover,
-    date,
-    category: defaultList("category"),
-    tags: inferTags(title, cover),
-    type: "iframe",
-    provider: "j-av"
+    latestLastRunAt: crawlState.latestLastRunAt || "",
+    latestLastNewCount: crawlState.latestLastNewCount || 0,
+    backfillPage: crawlState.backfillPage || 0,
+    backfillCursor: crawlState.backfillCursor || "",
+    totalVideos: crawlState.totalVideos || mockVideos.length,
+    lastBackfillRunAt: crawlState.lastBackfillRunAt || "",
+    lastBackfillFetchedCount: crawlState.lastBackfillFetchedCount || 0,
+    lastBackfillDuplicateCount: crawlState.lastBackfillDuplicateCount || 0,
+    lastBackfillAddedCount: crawlState.lastBackfillAddedCount || 0,
+    lastBackfillStopReason: crawlState.lastBackfillStopReason || "",
+    sourceHealth: crawlState.sourceHealth || {}
   };
-}
-
-async function parseVideoPageSafely(url, scope = "latest") {
-  try {
-    return await parseVideoPage(url);
-  } catch (error) {
-    console.log(`[fail:${scope}] url=${normalizeEntryUrl(url)} reason=${error?.message || error}`);
-    return null;
-  }
-}
-
-function assertNormalHtml(html, url, status) {
-  const text = String(html || "");
-  const lower = text.toLowerCase();
-  const title = cleanText(text.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] || "");
-  if (!text.trim()) throw new Error(`Empty response body: status=${status} url=${url}`);
-  if (lower.includes("cf-browser-verification") || lower.includes("just a moment") || lower.includes("captcha")) {
-    throw new Error(`Blocked or challenge response: status=${status} title=${title || ""} url=${url}. Set J_AV_COOKIE/CRAWL_COOKIE when the source requires a browser challenge cookie.`);
-  }
-}
-
-function assertEntriesFound(entryUrls, html, pageUrl) {
-  if (entryUrls.length > 0) return;
-  const title = cleanText(String(html).match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] || "");
-  throw new Error(`No video entries parsed from source page: url=${pageUrl} title=${title || ""} length=${String(html || "").length}`);
-}
-
-function logSkip(scope, item, reason) {
-  console.log(`[skip:${scope}] id=${item.id || ""} url=${item.source_url || item.sourceUrl || ""} reason=${reason}`);
-}
-
-function logLatestSourceItem(item) {
-  console.log("[crawl] latestSourceVideo=" + JSON.stringify({
-    title: item.title,
-    url: item.source_url,
-    id: item.id,
-    publishedAt: item.date || item.publishedAt || ""
-  }));
-}
-
-function logLatestSummary(result) {
-  console.log(`[crawl] listFound=${result.listFoundCount || 0}`);
-  console.log(`[crawl] existing=${result.existingCount || 0}`);
-  console.log(`[crawl] candidates=${result.candidateCount || 0}`);
-  console.log(`[crawl] parsed=${result.parsedCount || 0}`);
-  console.log(`[crawl] duplicates=${result.duplicateCount || 0}`);
-  console.log(`[crawl] parseFailed=${result.parseFailureCount || 0}`);
-  console.log(`[crawl] finalWriteCount=${result.items.length}`);
-}
-
-function parseEntryUrls(html, pageUrl) {
-  const links = parseEntryLinks(html, pageUrl).map((link) => normalizeEntryUrl(link.url));
-  return [...new Set(links)].filter((url) => entryIdFromUrl(url));
-}
-
-function parseContentEntryUrls(html, pageUrl) {
-  const links = parseEntryLinks(html, pageUrl)
-    .filter((link) => link.label && !isPaginationLabel(link.label))
-    .map((link) => normalizeEntryUrl(link.url));
-  return [...new Set(links)].filter((url) => entryIdFromUrl(url));
-}
-
-function parseEntryLinks(html, pageUrl) {
-  return [...html.matchAll(/<a[^>]+href=["']([^"']*entry=[^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi)]
-    .map((match) => ({
-      url: normalizeUrl(decodeHtml(match[1]), pageUrl),
-      label: cleanText(match[2] || "")
-    }))
-    .filter((link) => {
-      try {
-        const parsed = new URL(link.url);
-        return parsed.searchParams.has("entry");
-      } catch {
-        return false;
-      }
-    });
-}
-
-function isPaginationLabel(label) {
-  const text = cleanText(label).toLowerCase();
-  return /^\d+$/.test(text) || ["\u7b2c\u4e00\u9801", "\u4e0a\u4e00\u9801", "\u4e0b\u4e00\u9801", "first", "prev", "previous", "next", "older"].includes(text);
-}
-
-function parseNextUrl(html, pageUrl) {
-  const links = [...html.matchAll(/<a[^>]+href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi)];
-  for (const [, href, label] of links) {
-    const text = cleanText(label).toLowerCase();
-    if (href.includes("entry=") && (text.includes("next") || text.includes("older") || text.includes("\u4e0b\u4e00\u9801"))) {
-      return normalizeUrl(decodeHtml(href), pageUrl);
-    }
-  }
-
-  if (entryIdFromUrl(pageUrl)) return "";
-
-  const numericLinks = links
-    .map(([, href, label]) => ({ href, text: cleanText(label) }))
-    .filter((link) => link.href.includes("entry=") && /^\d+$/.test(link.text))
-    .sort((a, b) => Number(a.text) - Number(b.text));
-  return numericLinks.length > 0 ? normalizeUrl(decodeHtml(numericLinks[0].href), pageUrl) : "";
-}
-
-function parseOlderEntryUrl(html, pageUrl) {
-  const currentId = entryIdFromUrl(pageUrl);
-  if (!currentId) return "";
-
-  return parseEntryUrls(html, pageUrl)
-    .filter((url) => entryIdFromUrl(url) < currentId)
-    .sort((a, b) => entryIdFromUrl(b).localeCompare(entryIdFromUrl(a)))
-    .at(0) || "";
-}
-
-function findFirst(html, pattern, predicate = () => true) {
-  const flags = pattern.flags.includes("g") ? pattern.flags : `${pattern.flags}g`;
-  const globalPattern = new RegExp(pattern.source, flags);
-  for (const match of html.matchAll(globalPattern)) {
-    const value = normalizeUrl(match[1] || "", baseUrl);
-    if (predicate(value)) return match[1] || "";
-  }
-  return "";
-}
-
-function normalizeUrl(url, base) {
-  try {
-    return new URL(url, base).toString();
-  } catch {
-    return url;
-  }
-}
-
-function decodeHtml(value) {
-  return String(value)
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"');
-}
-
-function normalizeEntryUrl(url) {
-  const entry = entryIdFromUrl(url);
-  return entry.startsWith("entry") ? `${baseUrl}?entry=${encodeURIComponent(entry)}` : normalizeUrl(url, baseUrl);
-}
-
-function normalizeSourceUrl(url) {
-  const normalized = normalizeUrl(url || "", baseUrl);
-  return entryIdFromUrl(normalized) ? normalizeEntryUrl(normalized) : normalized;
-}
-
-function hasListCursorParams(url) {
-  try {
-    const parsed = new URL(url, baseUrl);
-    return parsed.searchParams.has("entry") && parsed.searchParams.has("m") && parsed.searchParams.has("y") && parsed.searchParams.has("d");
-  } catch {
-    return false;
-  }
-}
-
-function entryIdFromUrl(url) {
-  try {
-    return new URL(url, baseUrl).searchParams.get("entry") || "";
-  } catch {
-    return "";
-  }
-}
-
-function coverFromEmbed(url) {
-  try {
-    return new URL(url).searchParams.get("image") || "";
-  } catch {
-    return "";
-  }
-}
-
-function inferTags(title, cover) {
-  const tags = defaultList("tags");
-  const code = findCode(title) || findCode(cover);
-  if (code) {
-    tags.push(code);
-    tags.push(code.split("-")[0]);
-  }
-  return dedupe(tags);
 }
 
 function defaultList(field) {
@@ -714,28 +415,16 @@ function defaultList(field) {
   return Array.isArray(values) ? [...values.slice(0, 2)] : [];
 }
 
-function findCode(value = "") {
-  return String(value).match(/[a-z]{2,12}-?\d{2,5}/i)?.[0]?.toUpperCase().replace(/([A-Z]+)(\d+)$/, "$1-$2") || "";
-}
-
-function dedupe(values) {
-  return [...new Set(values.filter(Boolean))];
+function normalizeSourceUrl(url) {
+  try {
+    const parsed = new URL(url || "", "https://j-av.com/video/index.php");
+    const entry = parsed.searchParams.get("entry") || "";
+    return entry ? `https://j-av.com/video/index.php?entry=${encodeURIComponent(entry)}` : parsed.toString();
+  } catch {
+    return url || "";
+  }
 }
 
 function normalizeKey(value = "") {
   return String(value).replace(/\s+/g, " ").trim().toLowerCase();
 }
-
-function cleanText(value = "") {
-  return String(value)
-    .replace(/<[^>]+>/g, " ")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&amp;/g, "&")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
