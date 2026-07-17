@@ -14,11 +14,11 @@
   "sourceHealth": {
     "jAv": {
       "lastSuccessAt": "",
-      "lastFailureAt": "2026-07-16T14:51:14.017Z",
-      "consecutiveFailures": 4,
+      "lastFailureAt": "2026-07-17T15:01:15.502Z",
+      "consecutiveFailures": 5,
       "lastHttpStatus": 403,
       "lastError": "Blocked or challenge response: status=403 title=Just a moment... url=https://j-av.com/video/index.php?m=10&y=25&d=05&entry=entry251005-192518. Run npm run browser:verify and complete the site's normal browser verification if required.",
-      "blockedUntil": "2026-07-17T14:51:14.017Z"
+      "blockedUntil": "2026-07-18T15:01:15.502Z"
     }
   },
   "latestLastSourceId": "entry260712-145055",
