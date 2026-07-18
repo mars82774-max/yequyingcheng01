@@ -14,10 +14,10 @@
   "sourceHealth": {
     "jAv": {
       "lastSuccessAt": "2026-07-18T21:10:46.803Z",
-      "lastFailureAt": "2026-07-18T21:02:14.492Z",
-      "consecutiveFailures": 0,
+      "lastFailureAt": "2026-07-18T21:31:58.710Z",
+      "consecutiveFailures": 1,
       "lastHttpStatus": 0,
-      "lastError": "",
+      "lastError": "Source request failed: The operation was aborted due to timeout",
       "blockedUntil": ""
     }
   },
