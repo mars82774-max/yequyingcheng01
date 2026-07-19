@@ -14,11 +14,11 @@
   "sourceHealth": {
     "jAv": {
       "lastSuccessAt": "2026-07-19T02:51:06.632Z",
-      "lastFailureAt": "2026-07-19T03:32:08.567Z",
-      "consecutiveFailures": 2,
-      "lastHttpStatus": 522,
-      "lastError": "Fetch failed 522: https://j-av.com/video/index.php?m=10&y=25&d=05&entry=entry251005-191150 title=j-av.com | 522: Connection timed out length=7201",
-      "blockedUntil": ""
+      "lastFailureAt": "2026-07-19T03:40:47.016Z",
+      "consecutiveFailures": 3,
+      "lastHttpStatus": 0,
+      "lastError": "Source request failed: The operation was aborted due to timeout",
+      "blockedUntil": "2026-07-20T03:40:47.016Z"
     }
   },
   "latestLastSourceId": "entry260712-145055",
