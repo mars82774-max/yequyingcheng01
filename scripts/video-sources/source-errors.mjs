@@ -6,6 +6,10 @@ export class SourceStopError extends Error {
     this.httpStatus = details.httpStatus || 0;
     this.retryable = Boolean(details.retryable);
     this.blocked = Boolean(details.blocked);
+    this.failureKind = details.failureKind || "";
+    this.errorCode = details.errorCode || "";
+    this.challenge = Boolean(details.challenge);
+    this.retryAfterSeconds = Number(details.retryAfterSeconds || 0);
   }
 }
 

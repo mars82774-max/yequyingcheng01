@@ -16,7 +16,7 @@ export function createJavAdapter(options = {}) {
     createContext(env = process.env) {
       return {
         cookie: env.J_AV_COOKIE || env.CRAWL_COOKIE || "",
-        maxLatestPages: Number(env.MAX_LATEST_PAGES || 3),
+        maxLatestPages: Number(env.MAX_LATEST_PAGES || 10),
         maxBackfillPages: Number(env.MAX_BACKFILL_PAGES || 0),
         maxBackfillRepairPages: Number(env.MAX_BACKFILL_REPAIR_PAGES || 80),
         backfillRepairSkipPages: Number(env.BACKFILL_REPAIR_SKIP_PAGES || 3),
@@ -25,7 +25,8 @@ export function createJavAdapter(options = {}) {
         delayMs: Number(env.CRAWL_DELAY_MS || 800),
         crawlFetchMode: String(env.CRAWL_FETCH_MODE || "http").toLowerCase(),
         timeoutMs: Number(env.CRAWL_TIMEOUT_MS || 30000),
-        browserFetcher: null
+        browserFetcher: null,
+        fetchImpl: null
       };
     },
     async crawlLatest(ctx) {
@@ -64,6 +65,7 @@ async function crawlLatest(ctx) {
   let parsedCount = 0;
   let parseFailureCount = 0;
   let sourceFirstItem = null;
+  let oldestCandidateUrl = "";
 
   while (pageUrl && !seenPages.has(pageUrl) && (maxLatestPages <= 0 || pagesDone < maxLatestPages)) {
     seenPages.add(pageUrl);
@@ -72,6 +74,7 @@ async function crawlLatest(ctx) {
     const entryUrls = parseEntryUrls(html, pageUrl);
     assertEntriesFound(entryUrls, html, pageUrl);
     listFoundCount += entryUrls.length;
+    oldestCandidateUrl = entryUrls.at(-1) ? normalizeEntryUrl(entryUrls.at(-1)) : oldestCandidateUrl;
     console.log(`[crawl:${ctx.sourceName}] page=${pagesDone} currentUrl=${pageUrl}`);
     console.log(`[crawl:${ctx.sourceName}] listFound=${entryUrls.length}`);
     let pageNewCount = 0;
@@ -127,7 +130,7 @@ async function crawlLatest(ctx) {
       console.log(`[latest:${ctx.sourceName}] ${item.id} ${item.publishedAt || item.date} ${item.title.slice(0, 42)}`);
 
       if (maxNewItems > 0 && items.length >= maxNewItems) {
-        return result({ items, sourceItems, pagesDone, fetchedCount, duplicateCount, listFoundCount, existingCount, candidateCount, parsedCount, parseFailureCount, sourceFirstItem, nextCursor: pageUrl });
+        return result({ items, sourceItems, pagesDone, scannedPageCount: pagesDone, fetchedCount, duplicateCount, listFoundCount, existingCount, candidateCount, parsedCount, parseFailureCount, sourceFirstItem, oldestCandidateUrl, nextCursor: pageUrl });
       }
       await sleep(delayMs);
     }
@@ -144,7 +147,7 @@ async function crawlLatest(ctx) {
     await sleep(delayMs);
   }
 
-  return result({ items, sourceItems, pagesDone, fetchedCount, duplicateCount, listFoundCount, existingCount, candidateCount, parsedCount, parseFailureCount, sourceFirstItem, nextCursor: pageUrl || "" });
+  return result({ items, sourceItems, pagesDone, scannedPageCount: pagesDone, fetchedCount, duplicateCount, listFoundCount, existingCount, candidateCount, parsedCount, parseFailureCount, sourceFirstItem, oldestCandidateUrl, nextCursor: pageUrl || "" });
 }
 
 async function crawlBackfill(ctx) {
@@ -301,16 +304,20 @@ async function fetchText(url, ctx) {
 
   let response;
   try {
-    response = await fetch(url, {
+    const fetchImpl = ctx.fetchImpl || fetch;
+    response = await fetchImpl(url, {
       headers,
       signal: AbortSignal.timeout(Number(ctx.timeoutMs || 20000))
     });
   } catch (error) {
+    const failureKind = networkFailureKind(error);
     throw new SourceStopError(`Source request failed: ${error?.message || error}`, {
       retryable: true,
-      blocked: true,
+      blocked: false,
       url,
-      httpStatus: 0
+      httpStatus: 0,
+      failureKind,
+      errorCode: error?.cause?.code || error?.code || ""
     });
   }
 
@@ -320,12 +327,14 @@ async function fetchText(url, ctx) {
   console.log(`[crawl:${ctx.sourceName}] responseLength=${text.length} title=${title || ""}`);
   assertNormalHtml(text, url, response.status);
   if (!response.ok) {
-    const blocked = [403, 429].includes(response.status) || response.status >= 500;
+    const blocked = response.status === 429 || response.status >= 500;
     throw new SourceStopError(`Fetch failed ${response.status}: ${url} title=${title || ""} length=${text.length}`, {
       retryable: blocked,
       blocked,
       url,
-      httpStatus: response.status
+      httpStatus: response.status,
+      failureKind: response.status >= 500 ? "upstream_5xx" : "http_error",
+      retryAfterSeconds: retryAfterSeconds(response.headers)
     });
   }
   return text;
@@ -358,12 +367,13 @@ async function fetchTextWithBrowser(url, ctx) {
   console.log(`[crawl:${ctx.sourceName}] responseLength=${result.html.length} title=${result.title || ""}`);
   assertNormalHtml(result.html, url, result.status);
   if (!ok) {
-    const blocked = [403, 429].includes(result.status) || result.status >= 500;
+    const blocked = result.status === 429 || result.status >= 500;
     throw new SourceStopError(`Browser fetch failed ${result.status}: ${url} title=${result.title || ""} length=${result.html.length}. Run npm run browser:verify if verification is required.`, {
       retryable: blocked,
       blocked,
       url,
-      httpStatus: result.status
+      httpStatus: result.status,
+      failureKind: result.status >= 500 ? "upstream_5xx" : "http_error"
     });
   }
   return result.html;
@@ -439,6 +449,7 @@ function result(values) {
     items: [],
     sourceItems: [],
     pagesDone: 0,
+    scannedPageCount: 0,
     fetchedCount: 0,
     duplicateCount: 0,
     listFoundCount: 0,
@@ -447,6 +458,7 @@ function result(values) {
     parsedCount: 0,
     parseFailureCount: 0,
     nextCursor: "",
+    oldestCandidateUrl: "",
     nextPage: 0,
     hasMore: Boolean(values.nextCursor),
     stopReason: "completed",
@@ -466,9 +478,33 @@ function assertNormalHtml(html, url, status) {
       retryable: true,
       blocked: true,
       url,
-      httpStatus: status
+      httpStatus: status,
+      failureKind: "cloudflare_challenge",
+      challenge: true
     });
   }
+}
+
+function retryAfterSeconds(headers) {
+  const raw = headers?.get?.("retry-after") || "";
+  const seconds = Number(raw);
+  if (Number.isFinite(seconds) && seconds > 0) return seconds;
+  const dateValue = Date.parse(raw);
+  if (Number.isFinite(dateValue)) return Math.max(0, Math.ceil((dateValue - Date.now()) / 1000));
+  return 0;
+}
+
+function networkFailureKind(error) {
+  const name = error?.name || "";
+  const code = error?.code || "";
+  const causeCode = error?.cause?.code || "";
+  const message = error?.message || "";
+  const combined = [name, code, causeCode, message, error?.cause?.message].filter(Boolean).join(" ");
+  if (combined.includes("UND_ERR_CONNECT_TIMEOUT") || combined.includes("ETIMEDOUT")) return "connect_timeout";
+  if (combined.includes("UND_ERR_HEADERS_TIMEOUT")) return "headers_timeout";
+  if (combined.includes("ECONNRESET")) return "connection_reset";
+  if (name === "AbortError" || name === "TimeoutError" || combined.includes("The operation was aborted due to timeout")) return "timeout";
+  return "network_error";
 }
 
 function assertEntriesFound(entryUrls, html, pageUrl) {

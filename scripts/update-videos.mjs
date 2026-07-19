@@ -5,6 +5,15 @@ import { mockVideos } from "../src/mockVideos.js";
 import { createJavAdapter } from "./video-sources/j-av.mjs";
 import { createSourceTemplateAdapter } from "./video-sources/template.mjs";
 import { isSourceStopError } from "./video-sources/source-errors.mjs";
+import {
+  crawlLatestWithRetry,
+  latestRetryDelaysFromEnv,
+  latestRunOutcome,
+  recordSourceFailure,
+  recordSourceSuccess,
+  sourceHealth,
+  sourceSkipReason
+} from "./video-crawl-policy.mjs";
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const videosOutput = join(root, "src", "mockVideos.js");
@@ -13,6 +22,7 @@ const crawlMode = (process.env.CRAWL_MODE || "backfill").toLowerCase();
 const dryRun = ["1", "true", "yes"].includes(String(process.env.CRAWL_DRY_RUN || "").toLowerCase());
 const failurePauseThreshold = Number(process.env.SOURCE_FAILURE_PAUSE_THRESHOLD || 3);
 const blockedPauseHours = Number(process.env.SOURCE_BLOCKED_PAUSE_HOURS || 24);
+const latestRetryDelaysMs = latestRetryDelaysFromEnv(process.env);
 const now = new Date();
 
 const sources = [
@@ -45,13 +55,24 @@ const collectedSourceItems = [];
 const runResults = [];
 let healthChanged = false;
 let cursorChanged = false;
+let completedSourceCount = 0;
+let requestPerformedCount = 0;
+let pausedSourceCount = 0;
+let failedSourceCount = 0;
 
 for (const source of sources) {
-  const health = sourceHealth(state, source);
+  const health = sourceHealth(state, source, crawlMode, now);
+  if (health._changed) {
+    console.log(`[source:${source.sourceName}] cooldown expired`);
+  }
+  healthChanged = Boolean(health._changed) || healthChanged;
+  delete health._changed;
   const skipReason = sourceSkipReason(source, health, now);
   if (skipReason) {
-    console.log(`[source:${source.sourceName}] skipped reason=${skipReason} blockedUntil=${health.blockedUntil || ""}`);
-    runResults.push(emptyResult(source.sourceName, skipReason));
+    pausedSourceCount += 1;
+    console.log(`[source:${source.sourceName}] skipped reason=${skipReason} blockedUntil=${health.blockedUntil || ""} requestPerformed=false crawlStatus=${skipReason}`);
+    console.log("No source request was performed");
+    runResults.push(emptyResult(source.sourceName, skipReason, null, false));
     continue;
   }
 
@@ -69,9 +90,11 @@ for (const source of sources) {
   console.log(`[source:${source.sourceName}] start cookieConfigured=${Boolean(sourceContext.cookie)}`);
   try {
     const result = crawlMode === "latest"
-      ? await source.crawlLatest(ctx)
+      ? await crawlLatestWithRetry(source, ctx, { retryDelaysMs: latestRetryDelaysMs, log: console.log })
       : await source.crawlBackfill(ctx);
     runResults.push(result);
+    requestPerformedCount += result.requestPerformed === false ? 0 : 1;
+    completedSourceCount += 1;
 
     healthChanged = recordSourceSuccess(health, now) || healthChanged;
 
@@ -92,11 +115,18 @@ for (const source of sources) {
     logRunSummary(result);
   } catch (error) {
     if (!isSourceStopError(error)) throw error;
+    requestPerformedCount += 1;
+    failedSourceCount += 1;
     console.log(`[source:${source.sourceName}] stopped reason=${error.message}`);
     console.log(`[source:${source.sourceName}] httpStatus=${error.httpStatus || 0} blocked=${Boolean(error.blocked)} retryable=${Boolean(error.retryable)}`);
-    recordSourceFailure(health, error, now);
+    const failureRecord = recordSourceFailure(health, error, now, { mode: crawlMode, failurePauseThreshold, blockedPauseHours });
+    if (failureRecord.blocked) {
+      console.log(`[source] paused until ${health.blockedUntil}`);
+    } else if (error.blocked) {
+      console.log(`[source] blocked this run; consecutiveFailures=${health.consecutiveFailures}/${failurePauseThreshold}`);
+    }
     healthChanged = true;
-    runResults.push(emptyResult(source.sourceName, error.message, error));
+    runResults.push(emptyResult(source.sourceName, error.message, error, true));
     break;
   } finally {
     if (ctx.browserFetcher) {
@@ -115,7 +145,7 @@ if (collectedItems.length > 0 || (crawlMode === "latest" && collectedSourceItems
   updateOldestState(state, merged);
 }
 
-if (crawlMode === "latest") {
+if (crawlMode === "latest" && completedSourceCount > 0) {
   state.latestLastRunAt = now.toISOString();
   state.latestLastNewCount = collectedItems.length;
 }
@@ -124,6 +154,21 @@ console.log(`[crawl] outputBefore=${previousCount}`);
 console.log(`[crawl] outputAfter=${merged.length}`);
 console.log(`[crawl] addedCount=${merged.length - previousCount}`);
 console.log(`[crawl] totalVideoCount=${merged.length}`);
+console.log(`[crawl] requestPerformed=${requestPerformedCount > 0}`);
+console.log(`[crawl] completedSources=${completedSourceCount}`);
+console.log(`[crawl] failedSources=${failedSourceCount}`);
+console.log(`[crawl] pausedSources=${pausedSourceCount}`);
+
+if (crawlMode === "latest" && completedSourceCount === 0) {
+  if (!dryRun && (healthChanged || cursorChanged)) {
+    await writeState(state);
+    console.log("[crawl] wrote state only");
+  } else if (dryRun) {
+    console.log("[crawl] dryRun=true skip writes");
+  }
+  console.error("[crawl] latest failed: no source completed successfully");
+  process.exit(1);
+}
 
 if (dryRun) {
   console.log("[crawl] dryRun=true skip writes");
@@ -140,52 +185,18 @@ if (merged.length !== previousCount || collectedItems.length > 0) {
 if (healthChanged || cursorChanged) {
   await writeState(state);
   console.log("[crawl] wrote state only");
+  if (crawlMode === "latest") {
+    const outcome = latestRunOutcome({ completedSourceCount, newCount: collectedItems.length });
+    if (outcome.printNoNewLatest) console.log(outcome.message);
+  }
   process.exit(0);
 }
 
-console.log(crawlMode === "latest" ? "No new latest videos" : "No old video updates");
-
-function sourceHealth(crawlState, source) {
-  crawlState.sourceHealth[source.key] = {
-    lastSuccessAt: "",
-    lastFailureAt: "",
-    consecutiveFailures: 0,
-    lastHttpStatus: 0,
-    lastError: "",
-    blockedUntil: "",
-    ...(crawlState.sourceHealth[source.key] || {})
-  };
-  return crawlState.sourceHealth[source.key];
-}
-
-function sourceSkipReason(source, health, at) {
-  if (!source.enabled) return "disabled";
-  if (health.blockedUntil && Date.parse(health.blockedUntil) > at.getTime()) return "source_paused";
-  return "";
-}
-
-function recordSourceSuccess(health, at) {
-  const changed = Boolean(health.consecutiveFailures || health.lastError || health.blockedUntil || !health.lastSuccessAt);
-  health.lastSuccessAt = at.toISOString();
-  health.consecutiveFailures = 0;
-  health.lastHttpStatus = 0;
-  health.lastError = "";
-  health.blockedUntil = "";
-  return changed;
-}
-
-function recordSourceFailure(health, error, at) {
-  health.lastFailureAt = at.toISOString();
-  health.consecutiveFailures = Number(health.consecutiveFailures || 0) + 1;
-  health.lastHttpStatus = Number(error.httpStatus || 0);
-  health.lastError = String(error.message || error).slice(0, 500);
-  if (health.consecutiveFailures >= failurePauseThreshold) {
-    const blockedUntil = new Date(at.getTime() + blockedPauseHours * 60 * 60 * 1000);
-    health.blockedUntil = blockedUntil.toISOString();
-    console.log(`[source] paused until ${health.blockedUntil}`);
-  } else if (error.blocked) {
-    console.log(`[source] blocked this run; consecutiveFailures=${health.consecutiveFailures}/${failurePauseThreshold}`);
-  }
+if (crawlMode === "latest") {
+  const outcome = latestRunOutcome({ completedSourceCount, newCount: collectedItems.length });
+  if (outcome.printNoNewLatest) console.log(outcome.message);
+} else {
+  console.log("No old video updates");
 }
 
 function updateLatestStateFromResult(crawlState, result) {
@@ -210,6 +221,7 @@ function updateBackfillStateFromResult(crawlState, result) {
 
 function logRunSummary(result) {
   console.log(`[crawl:${result.sourceName}] pagesScanned=${result.pagesDone}`);
+  console.log(`[crawl:${result.sourceName}] scannedPageCount=${result.scannedPageCount || result.pagesDone || 0}`);
   console.log(`[crawl:${result.sourceName}] fetched=${result.fetchedCount}`);
   console.log(`[crawl:${result.sourceName}] listFound=${result.listFoundCount || 0}`);
   console.log(`[crawl:${result.sourceName}] existing=${result.existingCount || 0}`);
@@ -218,17 +230,20 @@ function logRunSummary(result) {
   console.log(`[crawl:${result.sourceName}] duplicates=${result.duplicateCount}`);
   console.log(`[crawl:${result.sourceName}] parseFailed=${result.parseFailureCount || 0}`);
   console.log(`[crawl:${result.sourceName}] added=${result.items.length}`);
+  console.log(`[crawl:${result.sourceName}] newCount=${result.items.length}`);
+  console.log(`[crawl:${result.sourceName}] oldestCandidateUrl=${result.oldestCandidateUrl || ""}`);
   console.log(`[crawl:${result.sourceName}] nextUrl=${result.nextCursor || ""}`);
   console.log(`[crawl:${result.sourceName}] hasMore=${Boolean(result.hasMore)}`);
   console.log(`[crawl:${result.sourceName}] stopReason=${result.stopReason}`);
 }
 
-function emptyResult(sourceName, stopReason, error = null) {
+function emptyResult(sourceName, stopReason, error = null, requestPerformed = false) {
   return {
     sourceName,
     items: [],
     sourceItems: [],
     pagesDone: 0,
+    scannedPageCount: 0,
     fetchedCount: 0,
     duplicateCount: 0,
     listFoundCount: 0,
@@ -237,10 +252,12 @@ function emptyResult(sourceName, stopReason, error = null) {
     parsedCount: 0,
     parseFailureCount: 0,
     nextCursor: "",
+    oldestCandidateUrl: "",
     nextPage: 0,
     hasMore: false,
     stopReason,
-    error
+    error,
+    requestPerformed
   };
 }
 
