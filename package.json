@@ -8,6 +8,7 @@
     "build": "node scripts/build.mjs",
     "preview": "node scripts/dev-server.mjs dist 4174",
     "update:videos": "node scripts/update-videos.mjs",
+    "diagnose:j-av": "node scripts/diagnose-jav-source.mjs",
     "browser:verify": "node scripts/browser-verify.mjs",
     "test:j-av:browser": "node scripts/test-jav-browser.mjs",
     "crawl:server:backfill": "node scripts/run-video-crawl.mjs backfill",
