@@ -13,11 +13,11 @@
   "lastBackfillStopReason": "max_backfill_pages",
   "sourceHealth": {
     "jAv": {
-      "lastSuccessAt": "2026-07-18T23:02:07.510Z",
+      "lastSuccessAt": "2026-07-19T01:20:58.049Z",
       "lastFailureAt": "2026-07-19T01:10:49.238Z",
-      "consecutiveFailures": 1,
-      "lastHttpStatus": 522,
-      "lastError": "Fetch failed 522: https://j-av.com/video/index.php?m=10&y=25&d=01&entry=entry251001-162140 title=j-av.com | 522: Connection timed out length=7202",
+      "consecutiveFailures": 0,
+      "lastHttpStatus": 0,
+      "lastError": "",
       "blockedUntil": ""
     }
   },
