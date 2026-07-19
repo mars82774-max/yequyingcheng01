@@ -22,10 +22,10 @@
         "blockedUntil": null
       },
       "backfill": {
-        "lastSuccessAt": "",
+        "lastSuccessAt": "2026-07-19T18:21:32.728Z",
         "lastFailureAt": "",
         "consecutiveFailures": 0,
-        "lastHttpStatus": 0,
+        "lastHttpStatus": 200,
         "lastError": null,
         "blockedUntil": null
       }
