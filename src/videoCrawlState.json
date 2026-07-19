@@ -14,10 +14,10 @@
   "sourceHealth": {
     "jAv": {
       "lastSuccessAt": "2026-07-18T23:02:07.510Z",
-      "lastFailureAt": "2026-07-18T22:51:39.545Z",
-      "consecutiveFailures": 0,
-      "lastHttpStatus": 0,
-      "lastError": "",
+      "lastFailureAt": "2026-07-19T01:10:49.238Z",
+      "consecutiveFailures": 1,
+      "lastHttpStatus": 522,
+      "lastError": "Fetch failed 522: https://j-av.com/video/index.php?m=10&y=25&d=01&entry=entry251001-162140 title=j-av.com | 522: Connection timed out length=7202",
       "blockedUntil": ""
     }
   },
