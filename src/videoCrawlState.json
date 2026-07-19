@@ -13,11 +13,11 @@
   "lastBackfillStopReason": "max_backfill_pages",
   "sourceHealth": {
     "jAv": {
-      "lastSuccessAt": "2026-07-19T01:20:58.049Z",
+      "lastSuccessAt": "2026-07-19T02:20:45.222Z",
       "lastFailureAt": "2026-07-19T02:10:47.458Z",
-      "consecutiveFailures": 2,
+      "consecutiveFailures": 0,
       "lastHttpStatus": 0,
-      "lastError": "Source request failed: The operation was aborted due to timeout",
+      "lastError": "",
       "blockedUntil": ""
     }
   },
