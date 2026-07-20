@@ -23,10 +23,10 @@
       },
       "backfill": {
         "lastSuccessAt": "2026-07-20T15:01:26.580Z",
-        "lastFailureAt": "2026-07-20T14:51:29.068Z",
-        "consecutiveFailures": 0,
-        "lastHttpStatus": 200,
-        "lastError": null,
+        "lastFailureAt": "2026-07-20T17:01:18.249Z",
+        "consecutiveFailures": 1,
+        "lastHttpStatus": 522,
+        "lastError": "Fetch failed 522: https://j-av.com/video/index.php?m=10&y=25&d=05&entry=entry251005-155832 title=j-av.com | 522: Connection timed out length=7201",
         "blockedUntil": null
       }
     }
