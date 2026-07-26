@@ -23,10 +23,10 @@
       },
       "backfill": {
         "lastSuccessAt": "2026-07-26T19:01:11.055Z",
-        "lastFailureAt": "2026-07-26T18:50:47.892Z",
-        "consecutiveFailures": 0,
-        "lastHttpStatus": 200,
-        "lastError": null,
+        "lastFailureAt": "2026-07-26T21:02:10.480Z",
+        "consecutiveFailures": 1,
+        "lastHttpStatus": 0,
+        "lastError": "Source request failed: The operation was aborted due to timeout",
         "blockedUntil": null
       }
     }
