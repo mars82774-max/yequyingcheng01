@@ -23,11 +23,11 @@
       },
       "backfill": {
         "lastSuccessAt": "2026-08-01T11:02:13.060Z",
-        "lastFailureAt": "2026-08-01T11:40:56.274Z",
-        "consecutiveFailures": 2,
+        "lastFailureAt": "2026-08-01T11:50:51.380Z",
+        "consecutiveFailures": 3,
         "lastHttpStatus": 403,
         "lastError": "Blocked or challenge response: status=403 title=Just a moment... url=https://j-av.com/video/index.php?m=10&y=25&d=05&entry=entry251005-192518. Run npm run browser:verify and complete the site's normal browser verification if required.",
-        "blockedUntil": null
+        "blockedUntil": "2026-08-02T11:50:51.380Z"
       }
     }
   },
