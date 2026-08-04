@@ -167,6 +167,27 @@ main {
   object-fit: cover;
 }
 
+.featured-slide img {
+  position: absolute;
+  inset: 0;
+  display: block;
+  opacity: 0;
+  transition: opacity 0.25s ease;
+}
+
+.featured-slide img.is-loaded {
+  opacity: 1;
+}
+
+.featured-slide img.is-error {
+  opacity: 0;
+}
+
+.featured-slide .poster-fallback {
+  position: absolute;
+  inset: 0;
+}
+
 .featured-dots {
   position: absolute;
   left: 0;

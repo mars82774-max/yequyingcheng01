@@ -147,8 +147,27 @@ function tagPath(tag) {
 
 function cardArt(video, index) {
   if (video.cover) {
-    return `<img src="${video.cover}" alt="${escapeHtml(video.title)}" loading="lazy" />`;
+    return `<img src="${escapeHtml(video.cover)}" alt="${escapeHtml(video.title)}" loading="lazy" />`;
   }
+  return cardFallback(index);
+}
+
+function featuredSlideArt(video, index) {
+  const fallback = cardFallback(index);
+  if (!video.cover) return fallback;
+  return `
+    ${fallback}
+    <img
+      data-featured-image
+      data-src="${escapeHtml(video.cover)}"
+      alt="${escapeHtml(video.title)}"
+      loading="eager"
+      decoding="async"
+    />
+  `;
+}
+
+function cardFallback(index) {
   const tone = ["gold", "sangria", "violet", "smoke", "ember", "midnight"][index % 6];
   return `<div class="poster-fallback ${tone}"><span>${String(index + 1).padStart(2, "0")}</span></div>`;
 }
@@ -219,7 +238,9 @@ function renderHeroAdCarousel() {
 }
 
 function renderFeaturedVideosPanel(videos) {
-  const featuredVideos = rankFeaturedVideos(videos.length ? videos : mockVideos, {
+  const sourceVideos = videos.length ? videos : mockVideos;
+  const videosWithCovers = sourceVideos.filter((video) => video.cover);
+  const featuredVideos = rankFeaturedVideos(videosWithCovers.length >= 5 ? videosWithCovers : sourceVideos, {
     domain: rankingDomain(),
     limit: 5
   });
@@ -228,7 +249,7 @@ function renderFeaturedVideosPanel(videos) {
       <div class="featured-carousel-track">
         ${featuredVideos.map((video, index) => `
           <a class="featured-slide ${index === 0 ? "active" : ""}" href="${videoPath(video)}">
-            ${cardArt(video, index)}
+            ${featuredSlideArt(video, index)}
             <span class="play-dot">播放</span>
           </a>
         `).join("")}
@@ -601,6 +622,7 @@ function bindEvents() {
   });
 
   startAdCarousels();
+  bindFeaturedCarouselImages();
   startVideoCarousels();
 }
 
@@ -657,5 +679,43 @@ function startVideoCarousels() {
 
     dots.forEach((dot, dotIndex) => dot.addEventListener("click", () => show(dotIndex)));
     window.setInterval(() => show(index + 1), 5000);
+  });
+}
+
+function bindFeaturedCarouselImages() {
+  document.querySelectorAll("img[data-featured-image]").forEach((img) => {
+    if (img.dataset.featuredImageBound === "true") return;
+    img.dataset.featuredImageBound = "true";
+
+    const slide = img.closest(".featured-slide");
+    const markLoaded = () => {
+      img.classList.add("is-loaded");
+      img.classList.remove("is-error");
+      slide?.classList.add("image-loaded");
+      slide?.classList.remove("image-error");
+    };
+
+    const markError = () => {
+      img.classList.add("is-error");
+      img.classList.remove("is-loaded");
+      slide?.classList.add("image-error");
+      slide?.classList.remove("image-loaded");
+    };
+
+    img.addEventListener("load", markLoaded, { once: true });
+    img.addEventListener("error", markError, { once: true });
+
+    const src = img.dataset.src || "";
+    if (src && img.getAttribute("src") !== src) {
+      img.src = src;
+    }
+
+    if (img.complete) {
+      if (img.naturalWidth > 0) {
+        markLoaded();
+      } else if (src) {
+        markError();
+      }
+    }
   });
 }
