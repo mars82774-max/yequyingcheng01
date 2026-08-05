@@ -1,5 +1,12 @@
 import { SourceStopError } from "./source-errors.mjs";
 import { createBrowserFetcher } from "./browser-fetch.mjs";
+import {
+  imageFromPlayerUrl,
+  isValidCoverUrl,
+  normalizeCandidateUrl,
+  normalizePlayerUrl,
+  validatePlayerUrl
+} from "../../src/videoUrls.js";
 
 const baseUrl = "https://j-av.com/video/index.php";
 
@@ -381,8 +388,13 @@ async function fetchTextWithBrowser(url, ctx) {
 
 async function parseVideoPage(url, ctx) {
   const html = await fetchText(url, ctx);
-  const embedUrl = normalizeUrl(findFirst(html, /<iframe[^>]+src=["']([^"']+)["']/gi, (value) => value.includes("a-big.com/player")), url);
-  const thumbnail = coverFromEmbed(embedUrl);
+  return parseJavVideoHtml(html, url, ctx);
+}
+
+export function parseJavVideoHtml(html, url, ctx = {}) {
+  const sourceUrl = normalizeEntryUrl(url);
+  const embedUrl = findPlayerUrl(html, url, sourceUrl);
+  const thumbnail = findCoverUrl(html, url, embedUrl);
   const title = cleanText(
     findFirst(html, /<div[^>]+class=["'][^"']*blog_subject[^"']*["'][^>]*>([\s\S]*?)<\/div>/i) ||
       findFirst(html, /<title[^>]*>([\s\S]*?)<\/title>/i)?.split(" - J-AV")[0] ||
@@ -399,11 +411,11 @@ async function parseVideoPage(url, ctx) {
     title,
     thumbnail,
     duration: "",
-    sourceUrl: normalizeEntryUrl(url),
+    sourceUrl,
     playUrl: embedUrl,
     publishedAt,
     actors: [],
-    tags: inferTags(title, thumbnail, ctx.defaultTags),
+    tags: inferTags(title, thumbnail, ctx.defaultTags || []),
     sourceName: ctx.sourceName,
     category: ctx.defaultCategory
   });
@@ -417,6 +429,86 @@ async function parseVideoPageSafely(url, ctx, scope = "latest") {
     console.log(`[fail:${scope}:${ctx.sourceName}] url=${normalizeEntryUrl(url)} reason=${error?.message || error}`);
     return null;
   }
+}
+
+function findPlayerUrl(html, pageUrl, sourceUrl) {
+  const candidates = [
+    ...playerCandidatesFromIframes(html, pageUrl),
+    ...playerCandidatesFromScripts(html, pageUrl)
+  ];
+
+  for (const candidate of candidates) {
+    const playerUrl = normalizePlayerUrl(candidate, pageUrl);
+    const validation = validatePlayerUrl(playerUrl, { sourceUrl, detailUrl: sourceUrl });
+    if (validation.valid) return playerUrl;
+  }
+
+  return "";
+}
+
+function findCoverUrl(html, pageUrl, playerUrl) {
+  const fromPlayer = normalizeCandidateUrl(imageFromPlayerUrl(playerUrl), pageUrl);
+  if (isValidCoverUrl(fromPlayer)) return fromPlayer;
+
+  const candidates = [
+    ...imageCandidatesFromTags(html, pageUrl),
+    ...imageCandidatesFromScripts(html, pageUrl)
+  ];
+
+  for (const candidate of candidates) {
+    const coverUrl = normalizeCandidateUrl(candidate, pageUrl);
+    if (isValidCoverUrl(coverUrl)) return coverUrl;
+  }
+
+  return "";
+}
+
+function playerCandidatesFromIframes(html, pageUrl) {
+  return [...String(html || "").matchAll(/<iframe\b([^>]*)>/gi)]
+    .flatMap((match) => valuesFromAttrs(match[1], ["src", "data-src", "data-lazy-src", "data-url"]))
+    .map((value) => normalizeCandidateUrl(value, pageUrl))
+    .filter(Boolean);
+}
+
+function playerCandidatesFromScripts(html, pageUrl) {
+  return urlLikeCandidates(html, /(https?:\\?\/\\?\/|\/\/|\.\.\/|\/)?(?:[^"'`\s<>\\]+\/)?player\/twvid\/(?:sw|fl)\.php\?[^"'`\s<>]+/gi, pageUrl);
+}
+
+function imageCandidatesFromTags(html, pageUrl) {
+  const attrs = ["src", "data-src", "data-original", "data-lazy-src", "srcset", "content"];
+  const tags = [...String(html || "").matchAll(/<(?:img|source|meta)\b([^>]*)>/gi)];
+  const values = tags.flatMap((match) => valuesFromAttrs(match[1], attrs));
+  return values.flatMap((value) => srcsetCandidates(value)).map((value) => normalizeCandidateUrl(value, pageUrl)).filter(Boolean);
+}
+
+function imageCandidatesFromScripts(html, pageUrl) {
+  return urlLikeCandidates(html, /(?:https?:\\?\/\\?\/|\/\/)[^"'`\s<>\\]+?\.(?:avif|gif|jpe?g|png|webp)(?:\?[^"'`\s<>]*)?/gi, pageUrl);
+}
+
+function urlLikeCandidates(html, pattern, pageUrl) {
+  return [...String(html || "").matchAll(pattern)]
+    .map((match) => normalizeCandidateUrl(match[0], pageUrl))
+    .filter(Boolean);
+}
+
+function valuesFromAttrs(attrsText, names) {
+  const attrs = parseAttrs(attrsText);
+  return names.map((name) => attrs[name]).filter(Boolean);
+}
+
+function parseAttrs(attrsText = "") {
+  const attrs = {};
+  for (const match of String(attrsText).matchAll(/([:\w-]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/g)) {
+    attrs[match[1].toLowerCase()] = decodeHtml(match[2] ?? match[3] ?? match[4] ?? "");
+  }
+  return attrs;
+}
+
+function srcsetCandidates(value = "") {
+  return String(value)
+    .split(",")
+    .map((item) => item.trim().split(/\s+/, 1)[0])
+    .filter(Boolean);
 }
 
 function normalizeVideo(video) {

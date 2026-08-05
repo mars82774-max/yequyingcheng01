@@ -1,11 +1,13 @@
 import { activeAdItems, adsConfig, normalizeAds, SITE_CODE } from "./adsConfig.js";
 import { mockVideos } from "./mockVideos.js";
 import { rankFeaturedVideos, rankVideos } from "./ranking.js";
+import { displayCoverUrl, playableEmbedUrl } from "./videoUrls.js";
 
 const brand = {
   name: "夜趣影城",
   logo: "/assets/brands/yequyingcheng/logo.svg",
-  icon: "/assets/brands/yequyingcheng/logo-icon.svg"
+  icon: "/assets/brands/yequyingcheng/logo-icon.svg",
+  ogImage: "/assets/brands/yequyingcheng/og-image.png"
 };
 
 const HOT_RANKING_HOSTS = ["yeying", "yeyingcheng", "ye-ying", "yesakura", "sakura"];
@@ -146,20 +148,23 @@ function tagPath(tag) {
 }
 
 function cardArt(video, index) {
-  if (video.cover) {
-    return `<img src="${escapeHtml(video.cover)}" alt="${escapeHtml(video.title)}" loading="lazy" />`;
+  const cover = displayCoverUrl(video);
+  if (cover) {
+    return `<img src="${escapeHtml(cover)}" alt="${escapeHtml(video.title)}" loading="lazy" />`;
   }
   return cardFallback(index);
 }
 
 function featuredSlideArt(video, index) {
   const fallback = cardFallback(index);
-  if (!video.cover) return fallback;
+  const cover = displayCoverUrl(video);
+  if (!cover) return fallback;
   return `
     ${fallback}
     <img
       data-featured-image
-      data-src="${escapeHtml(video.cover)}"
+      data-src="${escapeHtml(cover)}"
+      data-fallback-src="${escapeHtml(brand.ogImage)}"
       alt="${escapeHtml(video.title)}"
       loading="eager"
       decoding="async"
@@ -455,13 +460,12 @@ window.reportAdMediaError = (media) => {
 };
 
 function renderPlayer(video) {
-  const embedUrl = playableEmbedUrl(video.embed_url);
+  const embedUrl = playableEmbedUrl(video.embed_url, video);
   if (!embedUrl) {
     return `
       <div class="player-empty">
         <img src="${brand.icon}" alt="" />
-        <strong>影片即將上架</strong>
-        <span>此影片正在整理中，請先瀏覽其他精選內容。</span>
+        <strong>播放器暫時無法取得，請稍後再試。</strong>
       </div>
     `;
   }
@@ -481,15 +485,6 @@ function renderPlayer(video) {
       </div>
     </div>
   `;
-}
-
-function playableEmbedUrl(url) {
-  if (!url) return "";
-  const id = String(url).match(/[?&]id=([^&]+)/)?.[1];
-  if (String(url).includes("a-big.com/player") && id) {
-    return `https://mmsi01.com/e/${encodeURIComponent(id)}`;
-  }
-  return url;
 }
 
 function renderVideoCard(video, index, extra = "") {
@@ -696,6 +691,11 @@ function bindFeaturedCarouselImages() {
     };
 
     const markError = () => {
+      const fallbackSrc = img.dataset.fallbackSrc || "";
+      if (fallbackSrc && img.currentSrc !== fallbackSrc && img.getAttribute("src") !== fallbackSrc) {
+        img.src = fallbackSrc;
+        return;
+      }
       img.classList.add("is-error");
       img.classList.remove("is-loaded");
       slide?.classList.add("image-error");

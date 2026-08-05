@@ -2,6 +2,7 @@ import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { mockVideos } from "../src/mockVideos.js";
+import { displayCoverUrl, playableEmbedUrl } from "../src/videoUrls.js";
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const dist = join(root, "dist");
@@ -362,7 +363,7 @@ function renderVideoPage(video) {
   const path = `/video/${encodeURIComponent(video.id)}/`;
   const categories = publicCategories(video);
   const tags = displayTags(video);
-  const embedUrl = playableEmbedUrl(video.embed_url);
+  const embedUrl = playableEmbedUrl(video.embed_url, video);
   const visibleDescription = cleanVideoDescription(video);
   const metaDescription = visibleDescription || video.title;
   const jsonLd = {
@@ -370,7 +371,7 @@ function renderVideoPage(video) {
     "@type": "VideoObject",
     name: video.title,
     description: metaDescription,
-    thumbnailUrl: video.cover || "/assets/brands/yequyingcheng/og-image.png",
+    thumbnailUrl: displayCoverUrl(video),
     uploadDate: video.date,
     embedUrl: embedUrl || undefined,
     genre: video.category,
@@ -381,7 +382,7 @@ function renderVideoPage(video) {
     title: `${video.title} | 夜趣影城`,
     description: metaDescription,
     path,
-    image: video.cover || "/assets/brands/yequyingcheng/og-image.png",
+    image: displayCoverUrl(video),
     jsonLd,
     body: `<main>
       <article class="seo-detail">
@@ -486,9 +487,9 @@ function cleanVideoDescription(video) {
 }
 
 function renderEmbedPlayer(video) {
-  const embedUrl = playableEmbedUrl(video.embed_url);
+  const embedUrl = playableEmbedUrl(video.embed_url, video);
   if (!embedUrl) {
-    return `<div class="player-empty"><img src="/assets/brands/yequyingcheng/logo-icon.svg" alt="" /><strong>影片即將上架</strong><span>此影片正在整理中，請先瀏覽其他精選內容。</span></div>`;
+    return `<div class="player-empty"><img src="/assets/brands/yequyingcheng/logo-icon.svg" alt="" /><strong>播放器暫時無法取得，請稍後再試。</strong></div>`;
   }
 
   return `<div class="player-shell">
@@ -504,15 +505,6 @@ function renderEmbedPlayer(video) {
       <span>若播放器未顯示，請稍後再試。</span>
     </div>
   </div>`;
-}
-
-function playableEmbedUrl(url) {
-  if (!url) return "";
-  const id = String(url).match(/[?&]id=([^&]+)/)?.[1];
-  if (String(url).includes("a-big.com/player") && id) {
-    return `https://mmsi01.com/e/${encodeURIComponent(id)}`;
-  }
-  return url;
 }
 
 function renderListingPage(title, videos, path) {
@@ -538,9 +530,10 @@ function renderListingPage(title, videos, path) {
 }
 
 function renderSeoCard(video, index) {
+  const cover = displayCoverUrl(video);
   return `<article class="video-card">
     <a class="thumb" href="/video/${encodeURIComponent(video.id)}/">
-      ${video.cover ? `<img src="${escapeHtml(video.cover)}" alt="${escapeHtml(video.title)}" loading="lazy" />` : `<div class="poster-fallback ${["gold", "sangria", "violet", "smoke"][index % 4]}"><span>${String(index + 1).padStart(2, "0")}</span></div>`}
+      ${cover ? `<img src="${escapeHtml(cover)}" alt="${escapeHtml(video.title)}" loading="lazy" />` : `<div class="poster-fallback ${["gold", "sangria", "violet", "smoke"][index % 4]}"><span>${String(index + 1).padStart(2, "0")}</span></div>`}
       <span class="play-dot">播放</span>
     </a>
     <div class="card-body">

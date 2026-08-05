@@ -2,6 +2,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { mockVideos } from "../src/mockVideos.js";
+import { isValidCoverUrl, validatePlayerUrl } from "../src/videoUrls.js";
 import { createJavAdapter } from "./video-sources/j-av.mjs";
 import { createSourceTemplateAdapter } from "./video-sources/template.mjs";
 import { isSourceStopError } from "./video-sources/source-errors.mjs";
@@ -263,8 +264,10 @@ function emptyResult(sourceName, stopReason, error = null, requestPerformed = fa
 
 function normalizeStoredVideo(video) {
   const sourceUrl = video.sourceUrl || video.source_url || "";
-  const playUrl = video.playUrl || video.embed_url || "";
-  const thumbnail = video.thumbnail || video.cover || video.cover_source || "";
+  const rawPlayUrl = video.playUrl || video.embed_url || "";
+  const playUrl = validatePlayerUrl(rawPlayUrl, video).valid ? rawPlayUrl : "";
+  const rawThumbnail = video.thumbnail || video.cover || video.cover_source || "";
+  const thumbnail = isValidCoverUrl(rawThumbnail) ? rawThumbnail : "";
   const publishedAt = video.publishedAt || video.date || video.createdAt || "";
   const sourceName = video.sourceName || video.provider || "unknown";
   return {
