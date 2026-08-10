@@ -81,7 +81,8 @@ function renderAdItem(ad) {
 }
 
 function renderAdSlide(ad, active) {
-  const body = `${renderAdMedia(ad)}<div class="ad-slide-caption"><strong>${escapeHtml(displayAdTitle(ad))}</strong></div>`;
+  const caption = ad.slotKey === "ad_mobile_top" ? "" : `<div class="ad-slide-caption"><strong>${escapeHtml(displayAdTitle(ad))}</strong></div>`;
+  const body = `${renderAdMedia(ad)}${caption}`;
   const className = `ad-slide ${active ? "active" : ""}`;
   const link = ad.linkUrl || ad.link;
   if (!link) return `<div class="${className}" data-slot="${escapeHtml(ad.slotKey)}">${body}</div>`;
@@ -127,6 +128,7 @@ function startAdCarousels() {
     dots.forEach((dot, dotIndex) => dot.addEventListener("click", () => show(dotIndex)));
     carousel.querySelector("[data-carousel-prev]")?.addEventListener("click", () => show(index - 1));
     carousel.querySelector("[data-carousel-next]")?.addEventListener("click", () => show(index + 1));
+    bindCarouselSwipe(carousel, (direction) => show(index + direction));
     carousel.addEventListener("mouseenter", () => {
       paused = true;
     });
@@ -137,6 +139,27 @@ function startAdCarousels() {
       if (!paused) show(index + 1);
     }, intervalMs);
   });
+}
+
+function bindCarouselSwipe(carousel, onSwipe) {
+  if (carousel.dataset.swipeBound === "true") return;
+  carousel.dataset.swipeBound = "true";
+  let startX = 0;
+  let startY = 0;
+
+  carousel.addEventListener("touchstart", (event) => {
+    const touch = event.changedTouches[0];
+    startX = touch.clientX;
+    startY = touch.clientY;
+  }, { passive: true });
+
+  carousel.addEventListener("touchend", (event) => {
+    const touch = event.changedTouches[0];
+    const deltaX = touch.clientX - startX;
+    const deltaY = touch.clientY - startY;
+    if (Math.abs(deltaX) < 40 || Math.abs(deltaX) < Math.abs(deltaY) * 1.25) return;
+    onSwipe(deltaX < 0 ? 1 : -1);
+  }, { passive: true });
 }
 
 function escapeHtml(value) {
