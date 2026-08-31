@@ -496,16 +496,16 @@ function renderEmbedPlayer(video) {
     return `<div class="player-empty"><img src="/assets/brands/yequyingcheng/logo-icon.svg" alt="" /><strong>此影片來源暫時無法播放，請稍後再試。</strong></div>`;
   }
 
-  return `<div class="player-shell">
-    <iframe
-      src="${escapeHtml(embedUrl)}"
-      title="${escapeHtml(video.title)}"
-      allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
-      allowfullscreen
-      loading="eager"
-    ></iframe>
-    <div class="player-fallback-action">
-      <span>若播放器未顯示，請稍後再試。</span>
+  return `<div class="player-shell" data-player-shell>
+    <div class="player-frame-viewport">
+      <iframe
+        class="player-frame"
+        src="${escapeHtml(embedUrl)}"
+        title="${escapeHtml(video.title)}"
+        allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
+        allowfullscreen
+        loading="eager"
+      ></iframe>
     </div>
   </div>`;
 }

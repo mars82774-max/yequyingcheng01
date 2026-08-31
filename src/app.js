@@ -1,5 +1,6 @@
 import { activeAdItems, adsConfig, normalizeAds, SITE_CODE } from "./adsConfig.js";
 import { mockVideos } from "./mockVideos.js";
+import { syncPlayerFrames } from "./playerFrame.js";
 import { rankFeaturedVideos, rankVideos } from "./ranking.js";
 import { displayCoverUrl, isPublicVideo, playableEmbedUrl } from "./videoUrls.js";
 
@@ -477,16 +478,16 @@ function renderPlayer(video) {
   }
 
   return `
-    <div class="player-shell">
-      <iframe
-        src="${escapeHtml(embedUrl)}"
-        title="${escapeHtml(video.title)}"
-        allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
-        allowfullscreen
-        loading="eager"
-      ></iframe>
-      <div class="player-fallback-action">
-        <span>若播放器未顯示，請稍後再試。</span>
+    <div class="player-shell" data-player-shell>
+      <div class="player-frame-viewport">
+        <iframe
+          class="player-frame"
+          src="${escapeHtml(embedUrl)}"
+          title="${escapeHtml(video.title)}"
+          allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
+          allowfullscreen
+          loading="eager"
+        ></iframe>
       </div>
     </div>
   `;
@@ -595,6 +596,7 @@ function render() {
     </footer>
   `;
 
+  syncPlayerFrames(app);
   bindEvents();
 }
 

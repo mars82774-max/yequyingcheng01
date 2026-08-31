@@ -716,19 +716,33 @@ h1 {
 }
 
 .player-shell {
-  min-height: 520px;
-  height: 100%;
-  display: grid;
-  grid-template-rows: minmax(420px, 1fr) auto;
+  --player-native-width: 670;
+  --player-visible-height: 420;
+  --player-content-height: 520;
+  --player-scale: 1;
+  height: calc(var(--player-visible-height) * var(--player-scale) * 1px);
+  min-height: 0;
+  position: relative;
+  overflow: hidden;
   background: #080808;
 }
 
-.hero-player iframe {
+.player-frame-viewport {
   width: 100%;
   height: 100%;
-  min-height: 420px;
+  overflow: hidden;
+  position: relative;
+}
+
+.hero-player iframe.player-frame {
+  width: calc(var(--player-native-width) * 1px);
+  height: calc(var(--player-content-height) * 1px);
+  min-height: 0;
   border: 0;
   background: #080808;
+  display: block;
+  transform: scale(var(--player-scale));
+  transform-origin: 0 0;
 }
 
 .player-fallback-action {
@@ -1161,7 +1175,6 @@ footer img {
     margin-bottom: 16px;
   }
 
-  .hero-player iframe,
   .player-empty {
     min-height: 260px;
   }

@@ -1,4 +1,5 @@
 import { activeAdItems, adsConfig, normalizeAds, SITE_CODE } from "./adsConfig.js";
+import { syncPlayerFrames } from "./playerFrame.js";
 
 const INVALID_AD_TITLES = new Set([
   "原生廣告卡",
@@ -22,6 +23,8 @@ const INVALID_AD_TITLES = new Set([
 ]);
 
 const slots = [...document.querySelectorAll("[data-ad-slot]")];
+
+syncPlayerFrames();
 
 if (slots.length) {
   renderSlots();
