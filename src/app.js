@@ -1,7 +1,7 @@
 import { activeAdItems, adsConfig, normalizeAds, SITE_CODE } from "./adsConfig.js";
 import { mockVideos } from "./mockVideos.js";
 import { rankFeaturedVideos, rankVideos } from "./ranking.js";
-import { displayCoverUrl, playableEmbedUrl } from "./videoUrls.js";
+import { displayCoverUrl, isPublicVideo, playableEmbedUrl } from "./videoUrls.js";
 
 const brand = {
   name: "夜趣影城",
@@ -37,11 +37,12 @@ const INVALID_AD_TITLES = new Set([
   "Inline banner ad",
   "Player below ad"
 ]);
+const publicVideos = mockVideos.filter(isPublicVideo);
 
 let state = {
   query: "",
   tag: "全部",
-  selected: sessionVideos()[0] || mockVideos[0],
+  selected: sessionVideos()[0] || publicVideos[0],
   ads: adsConfig
 };
 
@@ -75,7 +76,7 @@ async function loadAds() {
 
 function uniqueTags() {
   const tags = new Set(["全部"]);
-  mockVideos.forEach((video) => publicTags(video).forEach((tag) => tags.add(tag)));
+  publicVideos.forEach((video) => publicTags(video).forEach((tag) => tags.add(tag)));
   return [...tags];
 }
 
@@ -90,12 +91,12 @@ function filteredVideos() {
 }
 
 function sessionVideos() {
-  const byId = new Map(mockVideos.map((video) => [video.id, video]));
+  const byId = new Map(publicVideos.map((video) => [video.id, video]));
   return sessionVideoOrder().map((id) => byId.get(id)).filter(Boolean);
 }
 
 function sessionVideoOrder() {
-  const currentIds = mockVideos.map((video) => video.id);
+  const currentIds = publicVideos.map((video) => video.id);
   try {
     const stored = JSON.parse(sessionStorage.getItem(SHUFFLE_SESSION_KEY) || "[]");
     if (isValidVideoOrder(stored, currentIds)) return stored;
@@ -243,7 +244,7 @@ function renderHeroAdCarousel() {
 }
 
 function renderFeaturedVideosPanel(videos) {
-  const sourceVideos = videos.length ? videos : mockVideos;
+  const sourceVideos = videos.length ? videos : publicVideos;
   const videosWithCovers = sourceVideos.filter((video) => video.cover);
   const featuredVideos = rankFeaturedVideos(videosWithCovers.length >= 5 ? videosWithCovers : sourceVideos, {
     domain: rankingDomain(),
@@ -470,7 +471,7 @@ function renderPlayer(video) {
     return `
       <div class="player-empty">
         <img src="${brand.icon}" alt="" />
-        <strong>播放器暫時無法取得，請稍後再試。</strong>
+        <strong>此影片來源暫時無法播放，請稍後再試。</strong>
       </div>
     `;
   }
@@ -482,7 +483,6 @@ function renderPlayer(video) {
         title="${escapeHtml(video.title)}"
         allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
         allowfullscreen
-        referrerpolicy="no-referrer"
         loading="eager"
       ></iframe>
       <div class="player-fallback-action">
@@ -517,7 +517,7 @@ function videoCardLabel(video) {
 
 function render() {
   const videos = filteredVideos();
-  const featured = state.selected || videos[0] || mockVideos[0];
+  const featured = state.selected || videos[0] || publicVideos[0];
   const mobileTop = renderAdSlot("ad_mobile_top", { className: "ad-mobile-top" });
   const leaderboard = renderAdSlot("ad_desktop_leaderboard", { className: "ad-leaderboard" });
   const heroFeatured = renderFeaturedVideosPanel(videos);
@@ -615,7 +615,7 @@ function bindEvents() {
     node.addEventListener("click", (event) => {
       if (event.target.closest("a")) return;
       const id = node.dataset.video || node.dataset.play;
-      state.selected = mockVideos.find((video) => video.id === id) || state.selected;
+      state.selected = publicVideos.find((video) => video.id === id) || state.selected;
       window.scrollTo({ top: 0, behavior: "smooth" });
       render();
     });

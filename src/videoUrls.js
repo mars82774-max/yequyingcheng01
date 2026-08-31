@@ -4,9 +4,12 @@ export function playableEmbedUrl(url, video = {}) {
   const validation = validatePlayerUrl(url, video);
   if (!validation.valid) return "";
 
-  const id = validation.url.searchParams.get("id");
-  if (isABigPlayerUrl(validation.url) && id) {
-    return `https://mmsi01.com/e/${encodeURIComponent(id)}`;
+  if (isABigSwPlayerUrl(validation.url)) {
+    const routed = new URL(validation.url.toString());
+    routed.protocol = "https:";
+    routed.hostname = "j-av.com";
+    routed.port = "";
+    return routed.toString();
   }
 
   return validation.url.toString();
@@ -21,8 +24,13 @@ export function validatePlayerUrl(url, video = {}) {
   if (sameUrl(parsed, sourceUrl) || sameUrl(parsed, detailUrl)) return unavailable("matches_source_or_detail");
   if (isJavArticleUrl(parsed)) return unavailable("jav_article_url");
   if (!isSupportedPlayerUrl(parsed)) return unavailable("unsupported_player_url");
+  if (isFlPlayerUrl(parsed)) return unavailable("fl_hidden");
 
   return { valid: true, unavailable: false, reason: "", url: parsed };
+}
+
+export function isPublicVideo(video = {}) {
+  return !isFlPlayerUrl(video.embed_url || video.playUrl || "");
 }
 
 export function isSupportedPlayerUrl(url) {
@@ -88,6 +96,20 @@ function isABigPlayerUrl(url) {
   return /(^|\.)a-big\.com$/i.test(url.hostname)
     && /\/player\/twvid\/(?:sw|fl)\.php$/i.test(url.pathname)
     && Boolean(url.searchParams.get("id"));
+}
+
+function isABigSwPlayerUrl(url) {
+  return /(^|\.)a-big\.com$/i.test(url.hostname)
+    && /\/player\/twvid\/sw\.php$/i.test(url.pathname)
+    && Boolean(url.searchParams.get("id"));
+}
+
+function isFlPlayerUrl(url) {
+  const parsed = url instanceof URL ? url : parseAbsoluteUrl(url);
+  if (!parsed) return false;
+  return (/(^|\.)a-big\.com$/i.test(parsed.hostname) || /(^|\.)j-av\.com$/i.test(parsed.hostname))
+    && /\/player\/twvid\/fl\.php$/i.test(parsed.pathname)
+    && Boolean(parsed.searchParams.get("id"));
 }
 
 function isJavPlayerPath(url) {

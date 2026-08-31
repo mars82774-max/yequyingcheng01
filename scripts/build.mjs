@@ -2,7 +2,7 @@ import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { mockVideos } from "../src/mockVideos.js";
-import { displayCoverUrl, playableEmbedUrl } from "../src/videoUrls.js";
+import { displayCoverUrl, isPublicVideo, playableEmbedUrl } from "../src/videoUrls.js";
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const dist = join(root, "dist");
@@ -23,19 +23,23 @@ const baiduAnalytics = `<script>
 
 console.log("[build] start");
 console.log(`[build] total videos: ${mockVideos.length}`);
+const publicVideos = mockVideos.filter(isPublicVideo);
+console.log(`[build] public videos: ${publicVideos.length}`);
 await rm(dist, { recursive: true, force: true });
 await mkdir(dist, { recursive: true });
 
 for (const entry of ["src", "assets", "admin"]) {
   await cp(join(root, entry), join(dist, entry), { recursive: true });
 }
+await writeFile(join(dist, "src", "mockVideos.js"), `export const mockVideos = ${JSON.stringify(publicVideos, null, 2)};\n`, "utf-8");
+await rm(join(dist, "src", "videoCrawlState.json"), { force: true });
 
 console.log("[build] preparing indexes");
-const buildIndex = prepareVideoIndex(mockVideos);
+const buildIndex = prepareVideoIndex(publicVideos);
 console.log("[build] indexes ready");
 
 const sourceIndex = await readFile(join(root, "index.html"), "utf-8");
-const seoLinks = mockVideos
+const seoLinks = publicVideos
   .map((video) => `<a href="/video/${encodeURIComponent(video.id)}/">${escapeHtml(video.title)}</a>`)
   .join("\n      ");
 await writeFile(join(dist, "index.html"), sourceIndex.replace("<!-- SEO_LINKS -->", seoLinks), "utf-8");
@@ -60,7 +64,7 @@ console.log("[build] writing sitemap");
 await writeFile(join(dist, "robots.txt"), renderRobots(), "utf-8");
 await writeFile(join(dist, "sitemap.xml"), renderSitemap(), "utf-8");
 
-console.log(`[build] video pages: ${mockVideos.length}`);
+console.log(`[build] video pages: ${publicVideos.length}`);
 console.log(`[build] tag pages: ${tagPageCount}`);
 console.log(`[build] category pages: ${categoryPageCount}`);
 console.log(`[build] completed in ${((Date.now() - buildStartedAt) / 1000).toFixed(1)} seconds`);
@@ -68,17 +72,17 @@ console.log("Built static site to dist");
 
 async function writeVideoPages() {
   let nextProgress = 100;
-  for (let index = 0; index < mockVideos.length; index += writeConcurrency) {
-    const batch = mockVideos.slice(index, index + writeConcurrency);
+  for (let index = 0; index < publicVideos.length; index += writeConcurrency) {
+    const batch = publicVideos.slice(index, index + writeConcurrency);
     await Promise.all(batch.map((video) => writeHtml(`video/${video.id}/index.html`, renderVideoPage(video))));
-    const done = Math.min(index + batch.length, mockVideos.length);
+    const done = Math.min(index + batch.length, publicVideos.length);
     while (done >= nextProgress) {
-      console.log(`[build] generating video pages: ${nextProgress}/${mockVideos.length}`);
+      console.log(`[build] generating video pages: ${nextProgress}/${publicVideos.length}`);
       nextProgress += 100;
     }
   }
-  if (mockVideos.length === 0 || (nextProgress - 100) !== mockVideos.length) {
-    console.log(`[build] generating video pages: ${mockVideos.length}/${mockVideos.length}`);
+  if (publicVideos.length === 0 || (nextProgress - 100) !== publicVideos.length) {
+    console.log(`[build] generating video pages: ${publicVideos.length}/${publicVideos.length}`);
   }
 }
 
@@ -489,7 +493,7 @@ function cleanVideoDescription(video) {
 function renderEmbedPlayer(video) {
   const embedUrl = playableEmbedUrl(video.embed_url, video);
   if (!embedUrl) {
-    return `<div class="player-empty"><img src="/assets/brands/yequyingcheng/logo-icon.svg" alt="" /><strong>播放器暫時無法取得，請稍後再試。</strong></div>`;
+    return `<div class="player-empty"><img src="/assets/brands/yequyingcheng/logo-icon.svg" alt="" /><strong>此影片來源暫時無法播放，請稍後再試。</strong></div>`;
   }
 
   return `<div class="player-shell">
@@ -498,7 +502,6 @@ function renderEmbedPlayer(video) {
       title="${escapeHtml(video.title)}"
       allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
       allowfullscreen
-      referrerpolicy="no-referrer"
       loading="eager"
     ></iframe>
     <div class="player-fallback-action">
@@ -559,7 +562,7 @@ Sitemap: ${siteUrl}/sitemap.xml
 function renderSitemap() {
   const urls = [
     "/",
-    ...mockVideos.map((video) => `/video/${encodeURIComponent(video.id)}/`),
+    ...publicVideos.map((video) => `/video/${encodeURIComponent(video.id)}/`),
     ...[...buildIndex.videosByTag.keys()].map((tag) => `/tag/${encodeURIComponent(tag)}/`),
     ...[...buildIndex.videosByCategory.keys()].map((category) => `/category/${encodeURIComponent(category)}/`)
   ];
