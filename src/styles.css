@@ -717,7 +717,7 @@ h1 {
 
 .player-shell {
   --player-native-width: 670;
-  --player-visible-height: 420;
+  --player-visible-height: 401;
   --player-content-height: 520;
   --player-scale: 1;
   height: calc(var(--player-visible-height) * var(--player-scale) * 1px);

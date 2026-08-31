@@ -1,5 +1,5 @@
 const PLAYER_NATIVE_WIDTH = 670;
-const PLAYER_VISIBLE_HEIGHT = 420;
+const PLAYER_VISIBLE_HEIGHT = 401;
 
 export function syncPlayerFrames(root = document) {
   const shells = [...root.querySelectorAll("[data-player-shell]")];
