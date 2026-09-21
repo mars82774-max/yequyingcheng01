@@ -359,7 +359,7 @@ function pageShell({ title, description, path, body, image = "/assets/brands/yeq
     <link rel="stylesheet" href="/src/styles.css" />
     ${jsonLd ? `<script type="application/ld+json">${JSON.stringify(jsonLd)}</script>` : ""}
     <script type="module" src="/src/adsRuntime.js"></script>
-    <script type="module" src="/src/mediaPlayer.js?v=demo001-hls"></script>
+    <script type="module" src="/src/mediaPlayer.js?v=legacy-iframe-fix"></script>
     ${baiduAnalytics}
   </head>
   <body>
@@ -531,15 +531,18 @@ function renderEmbedPlayer(video) {
     return `<div class="player-empty"><img src="/assets/brands/yequyingcheng/logo-icon.svg" alt="" /><strong>播放器暫時無法取得，請稍後再試。</strong></div>`;
   }
 
-  return `<div class="player-shell">
-    <iframe
-      src="${escapeHtml(embedUrl)}"
-      title="${escapeHtml(video.title)}"
-      allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
-      allowfullscreen
-      referrerpolicy="no-referrer"
-      loading="eager"
-    ></iframe>
+  return `<div class="player-shell" data-player-shell>
+    <div class="player-frame-viewport">
+      <iframe
+        class="player-frame"
+        src="${escapeHtml(embedUrl)}"
+        title="${escapeHtml(video.title)}"
+        allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
+        allowfullscreen
+        referrerpolicy="no-referrer"
+        loading="eager"
+      ></iframe>
+    </div>
     <div class="player-fallback-action">
       <span>若播放器未顯示，請稍後再試。</span>
     </div>

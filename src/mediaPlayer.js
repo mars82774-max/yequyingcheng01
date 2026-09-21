@@ -1,13 +1,17 @@
 import { getManifestUrl, mediaVideoId } from "./mediaWorkerClient.js";
+import { syncPlayerFrames } from "./playerFrame.js";
 
 const players = new WeakMap();
 
 document.addEventListener("DOMContentLoaded", () => {
+  syncPlayerFrames(document);
   initMediaWorkerPlayers(document);
 });
 
 document.addEventListener("media-worker-player:refresh", (event) => {
-  initMediaWorkerPlayers(event.detail?.root || document);
+  const root = event.detail?.root || document;
+  syncPlayerFrames(root);
+  initMediaWorkerPlayers(root);
 });
 
 function initMediaWorkerPlayers(root = document) {
