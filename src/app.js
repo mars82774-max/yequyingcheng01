@@ -17,6 +17,8 @@ const HOT_RANKING_HOSTS = ["yeying", "yeyingcheng", "ye-ying", "yesakura", "saku
 const NATIVE_AD_INTERVAL = 6;
 const AD_DEVICE_BREAKPOINT = 760;
 const SIDEBAR_DESKTOP_BREAKPOINT = 1200;
+const INITIAL_VIDEO_BATCH = 36;
+const VIDEO_BATCH_SIZE = 36;
 const SHUFFLE_SESSION_KEY = "yequyingcheng.videoOrder.v1";
 const isDevEnvironment = ["localhost", "127.0.0.1", ""].includes(window.location.hostname);
 const DEFAULT_NATIVE_CTA = "立即體驗";
@@ -51,6 +53,7 @@ let state = {
   mediaErrors: new Map(),
   dynamicMediaRecords: [],
   catalogError: "",
+  visibleCount: INITIAL_VIDEO_BATCH,
   routeVideoId: routeMediaVideoId()
 };
 
@@ -58,16 +61,31 @@ const app = document.querySelector("#app");
 
 init();
 
-async function init() {
-  const [ads, mediaState, publicCatalog] = await Promise.all([loadAds(), loadMediaWorkerMetadata(), loadPublicMediaCatalog()]);
-  state.ads = ads;
-  state.mediaMetadata = mediaState.metadata;
-  state.mediaErrors = mediaState.errors;
-  state.dynamicMediaRecords = publicCatalog.records;
-  state.catalogError = publicCatalog.error;
-  const routedVideo = state.routeVideoId ? resolvedVideos().find((video) => isMediaWorkerVideo(video) && mediaVideoId(video) === state.routeVideoId) : null;
-  state.selected = routedVideo || sessionVideos()[0] || resolvedVideos()[0] || null;
+function init() {
+  state.selected = sessionVideos()[0] || resolvedVideos()[0] || null;
   render();
+  hydrateNonCriticalData();
+}
+
+function hydrateNonCriticalData() {
+  loadAds().then((ads) => {
+    state.ads = ads;
+    render();
+  });
+
+  loadMediaWorkerMetadata().then((mediaState) => {
+    state.mediaMetadata = mediaState.metadata;
+    state.mediaErrors = mediaState.errors;
+    render();
+  });
+
+  loadPublicMediaCatalog().then((publicCatalog) => {
+    state.dynamicMediaRecords = publicCatalog.records;
+    state.catalogError = publicCatalog.error;
+    const routedVideo = state.routeVideoId ? resolvedVideos().find((video) => isMediaWorkerVideo(video) && mediaVideoId(video) === state.routeVideoId) : null;
+    if (routedVideo) state.selected = routedVideo;
+    render();
+  });
 }
 
 async function loadPublicMediaCatalog() {
@@ -144,6 +162,22 @@ function publicVideos() {
     videos.push(video);
   }
   return videos;
+}
+
+function visibleVideos(videos) {
+  return videos.slice(0, Math.min(state.visibleCount, videos.length));
+}
+
+function resetVisibleVideos() {
+  state.visibleCount = INITIAL_VIDEO_BATCH;
+}
+
+function loadMoreVideos() {
+  const total = filteredVideos().length;
+  const next = Math.min(total, state.visibleCount + VIDEO_BATCH_SIZE);
+  if (next === state.visibleCount) return;
+  state.visibleCount = next;
+  render();
 }
 
 function sessionVideos() {
@@ -230,7 +264,8 @@ function tagPath(tag) {
 function cardArt(video, index) {
   const cover = videoCoverUrl(video);
   if (cover) {
-    return `<img src="${escapeHtml(cover)}" alt="${escapeHtml(video.title)}" loading="lazy" />`;
+    const eager = index < 6;
+    return `<img src="${escapeHtml(cover)}" alt="${escapeHtml(video.title)}" loading="${eager ? "eager" : "lazy"}" decoding="async" />`;
   }
   return cardFallback(index);
 }
@@ -671,8 +706,9 @@ function render() {
     return;
   }
 
-  const videos = filteredVideos();
-  const featured = state.selected || videos[0] || resolvedVideos()[0];
+  const allVideos = filteredVideos();
+  const videos = visibleVideos(allVideos);
+  const featured = state.selected || allVideos[0] || resolvedVideos()[0];
   const mobileTop = renderAdSlot("ad_mobile_top", { className: "ad-mobile-top" });
   const leaderboard = renderAdSlot("ad_desktop_leaderboard", { className: "ad-leaderboard" });
   const heroFeatured = renderFeaturedVideosPanel(videos);
@@ -738,6 +774,12 @@ function render() {
             ${renderVideoCard(video, index)}
           `).join("") || `<p class="empty">沒有符合條件的影片，請換一個標籤或關鍵字。</p>`}
         </div>
+        ${videos.length < allVideos.length ? `
+          <div class="load-more-sentinel" data-load-more>
+            <button type="button" data-load-more-button>載入更多影片</button>
+            <span>${videos.length} / ${allVideos.length}</span>
+          </div>
+        ` : ""}
       </section>
         </div>
         ${sidebarAd}
@@ -757,12 +799,14 @@ function render() {
 function bindEvents() {
   document.querySelector("#searchInput")?.addEventListener("input", (event) => {
     state.query = event.target.value;
+    resetVisibleVideos();
     render();
   });
 
   document.querySelectorAll("[data-tag]").forEach((button) => {
     button.addEventListener("click", () => {
       state.tag = button.dataset.tag;
+      resetVisibleVideos();
       render();
     });
   });
@@ -780,6 +824,20 @@ function bindEvents() {
   startAdCarousels();
   bindFeaturedCarouselImages();
   startVideoCarousels();
+  bindIncrementalLoader();
+}
+
+function bindIncrementalLoader() {
+  const sentinel = document.querySelector("[data-load-more]");
+  if (!sentinel) return;
+  sentinel.querySelector("[data-load-more-button]")?.addEventListener("click", loadMoreVideos);
+  if (typeof IntersectionObserver !== "function") return;
+  const observer = new IntersectionObserver((entries) => {
+    if (!entries.some((entry) => entry.isIntersecting)) return;
+    observer.disconnect();
+    loadMoreVideos();
+  }, { rootMargin: "600px 0px" });
+  observer.observe(sentinel);
 }
 
 let previousSidebarDesktop = isSidebarDesktop();
