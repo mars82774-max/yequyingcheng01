@@ -2,6 +2,7 @@ import { activeAdItems, adsConfig, normalizeAds, SITE_CODE } from "./adsConfig.j
 import { mockVideos } from "./mockVideos.js";
 import { syncPlayerFrames } from "./playerFrame.js";
 import { rankFeaturedVideos, rankVideos } from "./ranking.js";
+import { applyMediaMetadata, fetchMediaMetadata, isMediaWorkerVideo, mediaManifestUrl, mediaVideoId } from "./mediaWorkerClient.js";
 import { displayCoverUrl, isPublicVideo, playableEmbedUrl } from "./videoUrls.js";
 
 const brand = {
@@ -38,13 +39,15 @@ const INVALID_AD_TITLES = new Set([
   "Inline banner ad",
   "Player below ad"
 ]);
-const publicVideos = mockVideos.filter(isPublicVideo);
+const publicVideos = mockVideos.filter((video) => isPublicVideo(video) || isMediaWorkerVideo(video));
 
 let state = {
   query: "",
   tag: "全部",
-  selected: sessionVideos()[0] || publicVideos[0],
-  ads: adsConfig
+  selected: null,
+  ads: adsConfig,
+  mediaMetadata: new Map(),
+  mediaErrors: new Map()
 };
 
 const app = document.querySelector("#app");
@@ -52,8 +55,30 @@ const app = document.querySelector("#app");
 init();
 
 async function init() {
-  state.ads = await loadAds();
+  const [ads, mediaState] = await Promise.all([loadAds(), loadMediaWorkerMetadata()]);
+  state.ads = ads;
+  state.mediaMetadata = mediaState.metadata;
+  state.mediaErrors = mediaState.errors;
+  state.selected = sessionVideos()[0] || resolvedVideos()[0] || null;
   render();
+}
+
+async function loadMediaWorkerMetadata() {
+  if (isDevEnvironment && !new URLSearchParams(window.location.search).has("mediaCanary")) {
+    return { metadata: new Map(), errors: new Map() };
+  }
+  const metadata = new Map();
+  const errors = new Map();
+  const videos = mockVideos.filter(isMediaWorkerVideo);
+  await Promise.all(videos.map(async (video) => {
+    const videoId = mediaVideoId(video);
+    try {
+      metadata.set(videoId, await fetchMediaMetadata(videoId));
+    } catch (error) {
+      errors.set(videoId, error?.message || "metadata_unavailable");
+    }
+  }));
+  return { metadata, errors };
 }
 
 async function loadAds() {
@@ -77,7 +102,7 @@ async function loadAds() {
 
 function uniqueTags() {
   const tags = new Set(["全部"]);
-  publicVideos.forEach((video) => publicTags(video).forEach((tag) => tags.add(tag)));
+  resolvedVideos().forEach((video) => publicTags(video).forEach((tag) => tags.add(tag)));
   return [...tags];
 }
 
@@ -92,8 +117,24 @@ function filteredVideos() {
 }
 
 function sessionVideos() {
-  const byId = new Map(publicVideos.map((video) => [video.id, video]));
+  const byId = new Map(resolvedVideos().map((video) => [video.id, video]));
   return sessionVideoOrder().map((id) => byId.get(id)).filter(Boolean);
+}
+
+function resolvedVideos() {
+  return publicVideos.map(resolveVideo);
+}
+
+function resolveVideo(video) {
+  if (!isMediaWorkerVideo(video)) return video;
+  const videoId = mediaVideoId(video);
+  const metadata = state.mediaMetadata.get(videoId);
+  if (metadata) return applyMediaMetadata(video, metadata);
+  return {
+    ...video,
+    title: state.mediaErrors.has(videoId) ? "媒體暫時無法取得" : "媒體資料載入中",
+    mediaStatus: state.mediaErrors.has(videoId) ? "unavailable" : "loading"
+  };
 }
 
 function sessionVideoOrder() {
@@ -150,7 +191,7 @@ function tagPath(tag) {
 }
 
 function cardArt(video, index) {
-  const cover = displayCoverUrl(video);
+  const cover = videoCoverUrl(video);
   if (cover) {
     return `<img src="${escapeHtml(cover)}" alt="${escapeHtml(video.title)}" loading="lazy" />`;
   }
@@ -159,7 +200,7 @@ function cardArt(video, index) {
 
 function featuredSlideArt(video, index) {
   const fallback = cardFallback(index);
-  const cover = displayCoverUrl(video);
+  const cover = videoCoverUrl(video);
   if (!cover) return fallback;
   return `
     ${fallback}
@@ -467,6 +508,27 @@ window.reportAdMediaError = (media) => {
 };
 
 function renderPlayer(video) {
+  if (isMediaWorkerVideo(video)) {
+    const manifest = mediaManifestUrl(video);
+    return `
+      <div class="player-shell media-player-shell" data-media-player-shell>
+        <video
+          class="media-worker-video"
+          data-media-worker-player
+          data-video-id="${escapeHtml(mediaVideoId(video))}"
+          data-src="${escapeHtml(manifest)}"
+          title="${escapeHtml(video.title)}"
+          controls
+          playsinline
+          preload="metadata"
+        ></video>
+        <div class="player-fallback-action">
+          <span data-media-player-status>播放器載入中</span>
+        </div>
+      </div>
+    `;
+  }
+
   const embedUrl = playableEmbedUrl(video.embed_url, video);
   if (!embedUrl) {
     return `
@@ -513,7 +575,13 @@ function renderVideoCard(video, index, extra = "") {
 }
 
 function videoCardLabel(video) {
+  if (video?.type === "media-worker") return "Media Canary";
   return video?.type === "iframe" ? "影音" : video?.category?.[0] || "精選";
+}
+
+function videoCoverUrl(video) {
+  if (isMediaWorkerVideo(video) && video.cover) return video.cover;
+  return displayCoverUrl(video);
 }
 
 function render() {
@@ -617,7 +685,7 @@ function bindEvents() {
     node.addEventListener("click", (event) => {
       if (event.target.closest("a")) return;
       const id = node.dataset.video || node.dataset.play;
-      state.selected = publicVideos.find((video) => video.id === id) || state.selected;
+      state.selected = resolvedVideos().find((video) => video.id === id) || state.selected;
       window.scrollTo({ top: 0, behavior: "smooth" });
       render();
     });
@@ -748,3 +816,4 @@ function bindFeaturedCarouselImages() {
     }
   });
 }
+

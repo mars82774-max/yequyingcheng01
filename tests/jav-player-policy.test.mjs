@@ -87,7 +87,8 @@ test("current J-AV sw.php URLs remain unchanged", () => {
 });
 
 test("catalog public counts exclude all FL records", () => {
-  const counts = mockVideos.reduce((acc, video) => {
+  const iframeVideos = mockVideos.filter((video) => video.type !== "media-worker");
+  const counts = iframeVideos.reduce((acc, video) => {
     const path = new URL(video.embed_url).pathname.toLowerCase();
     acc.total += 1;
     if (path.endsWith("/sw.php")) acc.sw += 1;
@@ -96,7 +97,8 @@ test("catalog public counts exclude all FL records", () => {
     return acc;
   }, { total: 0, sw: 0, fl: 0, public: 0 });
 
-  assert.deepEqual(counts, { total: 2583, sw: 2207, fl: 376, public: 2207 });
+  assert.deepEqual(counts, { total: 2603, sw: 2227, fl: 376, public: 2227 });
+  assert.equal(isPublicVideo(mockVideos.find((video) => video.id === "DEMO-001")), true);
   assert.equal(isPublicVideo(mockVideos.find((video) => video.id === "entry260805-122000")), false);
   assert.equal(isPublicVideo(mockVideos.find((video) => video.id === "entry260803-124354")), true);
 });

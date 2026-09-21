@@ -1,5 +1,27 @@
 export const mockVideos = [
   {
+    "id": "DEMO-001",
+    "slug": "DEMO-001",
+    "title": "",
+    "thumbnail": "",
+    "duration": "",
+    "sourceUrl": "",
+    "playUrl": "",
+    "publishedAt": "2026-09-22",
+    "actors": [],
+    "tags": ["影音", "Canary"],
+    "sourceName": "media-worker",
+    "source_url": "",
+    "embed_url": "",
+    "cover_source": "",
+    "cover": "",
+    "date": "2026-09-22",
+    "category": ["影音", "Canary"],
+    "type": "media-worker",
+    "provider": "media-worker",
+    "media_video_id": "DEMO-001"
+  },
+  {
     "id": "entry260920-074912",
     "slug": "entry260920-074912",
     "title": "「我想被像垃圾一樣羞辱…」已婚4年，29歲，職業：離職助理，性取向：受虐狂，擁有男人想要蹂躪的纖細身材，朝羽穗乃AV出道作品",
@@ -57615,3 +57637,4 @@ export const mockVideos = [
     "provider": "j-av"
   }
 ];
+

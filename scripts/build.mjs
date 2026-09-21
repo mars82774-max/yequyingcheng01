@@ -2,6 +2,7 @@ import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { mockVideos } from "../src/mockVideos.js";
+import { applyMediaMetadata, fetchMediaMetadata, isMediaWorkerVideo, mediaManifestUrl, mediaVideoId } from "../src/mediaWorkerClient.js";
 import { displayCoverUrl, isPublicVideo, playableEmbedUrl } from "../src/videoUrls.js";
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -23,23 +24,24 @@ const baiduAnalytics = `<script>
 
 console.log("[build] start");
 console.log(`[build] total videos: ${mockVideos.length}`);
-const publicVideos = mockVideos.filter(isPublicVideo);
-console.log(`[build] public videos: ${publicVideos.length}`);
+const sourceVideos = mockVideos.filter((video) => isPublicVideo(video) || isMediaWorkerVideo(video));
+const siteVideos = await hydrateMediaWorkerVideos(sourceVideos);
+console.log(`[build] public videos: ${siteVideos.length}`);
 await rm(dist, { recursive: true, force: true });
 await mkdir(dist, { recursive: true });
 
 for (const entry of ["src", "assets", "admin"]) {
   await cp(join(root, entry), join(dist, entry), { recursive: true });
 }
-await writeFile(join(dist, "src", "mockVideos.js"), `export const mockVideos = ${JSON.stringify(publicVideos, null, 2)};\n`, "utf-8");
+await writeFile(join(dist, "src", "mockVideos.js"), `export const mockVideos = ${JSON.stringify(siteVideos, null, 2)};\n`, "utf-8");
 await rm(join(dist, "src", "videoCrawlState.json"), { force: true });
 
 console.log("[build] preparing indexes");
-const buildIndex = prepareVideoIndex(publicVideos);
+const buildIndex = prepareVideoIndex(siteVideos);
 console.log("[build] indexes ready");
 
 const sourceIndex = await readFile(join(root, "index.html"), "utf-8");
-const seoLinks = publicVideos
+const seoLinks = siteVideos
   .map((video) => `<a href="/video/${encodeURIComponent(video.id)}/">${escapeHtml(video.title)}</a>`)
   .join("\n      ");
 await writeFile(join(dist, "index.html"), sourceIndex.replace("<!-- SEO_LINKS -->", seoLinks), "utf-8");
@@ -64,7 +66,7 @@ console.log("[build] writing sitemap");
 await writeFile(join(dist, "robots.txt"), renderRobots(), "utf-8");
 await writeFile(join(dist, "sitemap.xml"), renderSitemap(), "utf-8");
 
-console.log(`[build] video pages: ${publicVideos.length}`);
+console.log(`[build] video pages: ${siteVideos.length}`);
 console.log(`[build] tag pages: ${tagPageCount}`);
 console.log(`[build] category pages: ${categoryPageCount}`);
 console.log(`[build] completed in ${((Date.now() - buildStartedAt) / 1000).toFixed(1)} seconds`);
@@ -72,18 +74,30 @@ console.log("Built static site to dist");
 
 async function writeVideoPages() {
   let nextProgress = 100;
-  for (let index = 0; index < publicVideos.length; index += writeConcurrency) {
-    const batch = publicVideos.slice(index, index + writeConcurrency);
+  for (let index = 0; index < siteVideos.length; index += writeConcurrency) {
+    const batch = siteVideos.slice(index, index + writeConcurrency);
     await Promise.all(batch.map((video) => writeHtml(`video/${video.id}/index.html`, renderVideoPage(video))));
-    const done = Math.min(index + batch.length, publicVideos.length);
+    const done = Math.min(index + batch.length, siteVideos.length);
     while (done >= nextProgress) {
-      console.log(`[build] generating video pages: ${nextProgress}/${publicVideos.length}`);
+      console.log(`[build] generating video pages: ${nextProgress}/${siteVideos.length}`);
       nextProgress += 100;
     }
   }
-  if (publicVideos.length === 0 || (nextProgress - 100) !== publicVideos.length) {
-    console.log(`[build] generating video pages: ${publicVideos.length}/${publicVideos.length}`);
+  if (siteVideos.length === 0 || (nextProgress - 100) !== siteVideos.length) {
+    console.log(`[build] generating video pages: ${siteVideos.length}/${siteVideos.length}`);
   }
+}
+
+async function hydrateMediaWorkerVideos(videos) {
+  return Promise.all(videos.map(async (video) => {
+    if (!isMediaWorkerVideo(video)) return video;
+    const videoId = mediaVideoId(video);
+    try {
+      return applyMediaMetadata(video, await fetchMediaMetadata(videoId));
+    } catch {
+      return { ...video, title: "媒體暫時無法取得", mediaStatus: "unavailable" };
+    }
+  }));
 }
 
 async function writeHtml(relativePath, html) {
@@ -345,6 +359,7 @@ function pageShell({ title, description, path, body, image = "/assets/brands/yeq
     <link rel="stylesheet" href="/src/styles.css" />
     ${jsonLd ? `<script type="application/ld+json">${JSON.stringify(jsonLd)}</script>` : ""}
     <script type="module" src="/src/adsRuntime.js"></script>
+    <script type="module" src="/src/mediaPlayer.js?v=demo001-hls"></script>
     ${baiduAnalytics}
   </head>
   <body>
@@ -375,7 +390,7 @@ function renderVideoPage(video) {
     "@type": "VideoObject",
     name: video.title,
     description: metaDescription,
-    thumbnailUrl: displayCoverUrl(video),
+    thumbnailUrl: videoCoverUrl(video),
     uploadDate: video.date,
     embedUrl: embedUrl || undefined,
     genre: video.category,
@@ -386,7 +401,7 @@ function renderVideoPage(video) {
     title: `${video.title} | 夜趣影城`,
     description: metaDescription,
     path,
-    image: displayCoverUrl(video),
+    image: videoCoverUrl(video),
     jsonLd,
     body: `<main>
       <article class="seo-detail">
@@ -491,21 +506,42 @@ function cleanVideoDescription(video) {
 }
 
 function renderEmbedPlayer(video) {
-  const embedUrl = playableEmbedUrl(video.embed_url, video);
-  if (!embedUrl) {
-    return `<div class="player-empty"><img src="/assets/brands/yequyingcheng/logo-icon.svg" alt="" /><strong>此影片來源暫時無法播放，請稍後再試。</strong></div>`;
+  if (isMediaWorkerVideo(video)) {
+    const manifest = mediaManifestUrl(video);
+    return `<div class="player-shell media-player-shell" data-media-player-shell>
+    <video
+      class="media-worker-video"
+      data-media-worker-player
+      data-video-id="${escapeHtml(mediaVideoId(video))}"
+      data-src="${escapeHtml(manifest)}"
+      title="${escapeHtml(video.title)}"
+      controls
+      playsinline
+      preload="metadata"
+      poster="${escapeHtml(videoCoverUrl(video))}"
+    ></video>
+    <div class="player-fallback-action">
+      <span data-media-player-status>播放器載入中</span>
+    </div>
+  </div>`;
   }
 
-  return `<div class="player-shell" data-player-shell>
-    <div class="player-frame-viewport">
-      <iframe
-        class="player-frame"
-        src="${escapeHtml(embedUrl)}"
-        title="${escapeHtml(video.title)}"
-        allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
-        allowfullscreen
-        loading="eager"
-      ></iframe>
+  const embedUrl = playableEmbedUrl(video.embed_url, video);
+  if (!embedUrl) {
+    return `<div class="player-empty"><img src="/assets/brands/yequyingcheng/logo-icon.svg" alt="" /><strong>播放器暫時無法取得，請稍後再試。</strong></div>`;
+  }
+
+  return `<div class="player-shell">
+    <iframe
+      src="${escapeHtml(embedUrl)}"
+      title="${escapeHtml(video.title)}"
+      allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
+      allowfullscreen
+      referrerpolicy="no-referrer"
+      loading="eager"
+    ></iframe>
+    <div class="player-fallback-action">
+      <span>若播放器未顯示，請稍後再試。</span>
     </div>
   </div>`;
 }
@@ -533,7 +569,7 @@ function renderListingPage(title, videos, path) {
 }
 
 function renderSeoCard(video, index) {
-  const cover = displayCoverUrl(video);
+  const cover = videoCoverUrl(video);
   return `<article class="video-card">
     <a class="thumb" href="/video/${encodeURIComponent(video.id)}/">
       ${cover ? `<img src="${escapeHtml(cover)}" alt="${escapeHtml(video.title)}" loading="lazy" />` : `<div class="poster-fallback ${["gold", "sangria", "violet", "smoke"][index % 4]}"><span>${String(index + 1).padStart(2, "0")}</span></div>`}
@@ -548,7 +584,13 @@ function renderSeoCard(video, index) {
 }
 
 function videoCardLabel(video) {
+  if (video?.type === "media-worker") return "Media Canary";
   return video?.type === "iframe" ? "影音" : video?.category?.[0] || "精選";
+}
+
+function videoCoverUrl(video) {
+  if (isMediaWorkerVideo(video) && video.cover) return video.cover;
+  return displayCoverUrl(video);
 }
 
 function renderRobots() {
@@ -562,7 +604,7 @@ Sitemap: ${siteUrl}/sitemap.xml
 function renderSitemap() {
   const urls = [
     "/",
-    ...publicVideos.map((video) => `/video/${encodeURIComponent(video.id)}/`),
+    ...siteVideos.map((video) => `/video/${encodeURIComponent(video.id)}/`),
     ...[...buildIndex.videosByTag.keys()].map((tag) => `/tag/${encodeURIComponent(tag)}/`),
     ...[...buildIndex.videosByCategory.keys()].map((category) => `/category/${encodeURIComponent(category)}/`)
   ];
@@ -572,3 +614,5 @@ ${urls.map((url) => `  <url><loc>${siteUrl}${url}</loc></url>`).join("\n")}
 </urlset>
 `;
 }
+
+
