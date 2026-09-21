@@ -3,7 +3,8 @@ export const MEDIA_WORKER_BASE_URL = "https://media-playback-canary.media-canary
 const MEDIA_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/;
 
 export function isMediaWorkerVideo(video = {}) {
-  return video.type === "media-worker" && MEDIA_ID_PATTERN.test(String(video.media_video_id || video.video_id || video.id || ""));
+  const sourceType = video.source_type || video.sourceType || video.type;
+  return sourceType === "media-worker" && MEDIA_ID_PATTERN.test(String(video.media_video_id || video.video_id || video.id || ""));
 }
 
 export function mediaVideoId(video = {}) {
@@ -27,7 +28,7 @@ export function mediaManifestUrl(videoOrId, baseUrl = MEDIA_WORKER_BASE_URL) {
   return mediaWorkerUrl(`/media/${encodeURIComponent(videoId)}/master.m3u8`, baseUrl);
 }
 
-export async function fetchMediaMetadata(videoId, options = {}) {
+export async function getMetadata(videoId, options = {}) {
   if (!MEDIA_ID_PATTERN.test(String(videoId || ""))) throw new Error("invalid_video_id");
   const timeoutMs = Math.max(1000, Number(options.timeoutMs || 8000));
   const controller = new AbortController();
@@ -43,6 +44,10 @@ export async function fetchMediaMetadata(videoId, options = {}) {
     clearTimeout(timeout);
   }
 }
+
+export const fetchMediaMetadata = getMetadata;
+export const getCoverUrl = mediaCoverUrl;
+export const getManifestUrl = mediaManifestUrl;
 
 export function normalizeMediaMetadata(payload, baseUrl = MEDIA_WORKER_BASE_URL) {
   const videoId = String(payload?.video_id || "").trim();

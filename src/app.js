@@ -2,7 +2,7 @@ import { activeAdItems, adsConfig, normalizeAds, SITE_CODE } from "./adsConfig.j
 import { mockVideos } from "./mockVideos.js";
 import { syncPlayerFrames } from "./playerFrame.js";
 import { rankFeaturedVideos, rankVideos } from "./ranking.js";
-import { applyMediaMetadata, fetchMediaMetadata, isMediaWorkerVideo, mediaManifestUrl, mediaVideoId } from "./mediaWorkerClient.js";
+import { applyMediaMetadata, getManifestUrl, getMetadata, isMediaWorkerVideo, mediaVideoId } from "./mediaWorkerClient.js";
 import { displayCoverUrl, isPublicVideo, playableEmbedUrl } from "./videoUrls.js";
 
 const brand = {
@@ -73,7 +73,7 @@ async function loadMediaWorkerMetadata() {
   await Promise.all(videos.map(async (video) => {
     const videoId = mediaVideoId(video);
     try {
-      metadata.set(videoId, await fetchMediaMetadata(videoId));
+      metadata.set(videoId, await getMetadata(videoId));
     } catch (error) {
       errors.set(videoId, error?.message || "metadata_unavailable");
     }
@@ -509,7 +509,7 @@ window.reportAdMediaError = (media) => {
 
 function renderPlayer(video) {
   if (isMediaWorkerVideo(video)) {
-    const manifest = mediaManifestUrl(video);
+    const manifest = getManifestUrl(video);
     return `
       <div class="player-shell media-player-shell" data-media-player-shell>
         <video
@@ -575,7 +575,7 @@ function renderVideoCard(video, index, extra = "") {
 }
 
 function videoCardLabel(video) {
-  if (video?.type === "media-worker") return "Media Canary";
+  if (isMediaWorkerVideo(video)) return "Media";
   return video?.type === "iframe" ? "影音" : video?.category?.[0] || "精選";
 }
 
@@ -816,4 +816,6 @@ function bindFeaturedCarouselImages() {
     }
   });
 }
+
+
 

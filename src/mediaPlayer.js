@@ -1,4 +1,4 @@
-import { mediaManifestUrl, mediaVideoId } from "./mediaWorkerClient.js";
+import { getManifestUrl, mediaVideoId } from "./mediaWorkerClient.js";
 
 const players = new WeakMap();
 
@@ -10,7 +10,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
 async function setupMediaWorkerPlayer(video) {
   if (players.has(video)) return;
-  const source = video.dataset.src || mediaManifestUrl(mediaVideoId(video.dataset));
+  const source = video.dataset.src || getManifestUrl(mediaVideoId(video.dataset));
   if (!source) throw new Error("missing_source");
   video.preload = video.preload || "metadata";
   video.playsInline = true;
@@ -80,4 +80,5 @@ function markPlayerError(video, error) {
   if (status) status.textContent = "播放器暫時無法取得，請稍後再試。";
   console.error("[media-worker] player failed", error?.details || error?.message || error);
 }
+
 

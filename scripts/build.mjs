@@ -2,7 +2,7 @@ import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { mockVideos } from "../src/mockVideos.js";
-import { applyMediaMetadata, fetchMediaMetadata, isMediaWorkerVideo, mediaManifestUrl, mediaVideoId } from "../src/mediaWorkerClient.js";
+import { applyMediaMetadata, getManifestUrl, getMetadata, isMediaWorkerVideo, mediaVideoId } from "../src/mediaWorkerClient.js";
 import { displayCoverUrl, isPublicVideo, playableEmbedUrl } from "../src/videoUrls.js";
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -93,7 +93,7 @@ async function hydrateMediaWorkerVideos(videos) {
     if (!isMediaWorkerVideo(video)) return video;
     const videoId = mediaVideoId(video);
     try {
-      return applyMediaMetadata(video, await fetchMediaMetadata(videoId));
+      return applyMediaMetadata(video, await getMetadata(videoId));
     } catch {
       return { ...video, title: "媒體暫時無法取得", mediaStatus: "unavailable" };
     }
@@ -507,7 +507,7 @@ function cleanVideoDescription(video) {
 
 function renderEmbedPlayer(video) {
   if (isMediaWorkerVideo(video)) {
-    const manifest = mediaManifestUrl(video);
+    const manifest = getManifestUrl(video);
     return `<div class="player-shell media-player-shell" data-media-player-shell>
     <video
       class="media-worker-video"
@@ -584,7 +584,7 @@ function renderSeoCard(video, index) {
 }
 
 function videoCardLabel(video) {
-  if (video?.type === "media-worker") return "Media Canary";
+  if (isMediaWorkerVideo(video)) return "Media";
   return video?.type === "iframe" ? "影音" : video?.category?.[0] || "精選";
 }
 
@@ -614,5 +614,7 @@ ${urls.map((url) => `  <url><loc>${siteUrl}${url}</loc></url>`).join("\n")}
 </urlset>
 `;
 }
+
+
 
 

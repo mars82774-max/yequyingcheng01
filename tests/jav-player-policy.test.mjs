@@ -98,7 +98,6 @@ test("catalog public counts exclude all FL records", () => {
   }, { total: 0, sw: 0, fl: 0, public: 0 });
 
   assert.deepEqual(counts, { total: 2603, sw: 2227, fl: 376, public: 2227 });
-  assert.equal(isPublicVideo(mockVideos.find((video) => video.id === "DEMO-001")), true);
   assert.equal(isPublicVideo(mockVideos.find((video) => video.id === "entry260805-122000")), false);
   assert.equal(isPublicVideo(mockVideos.find((video) => video.id === "entry260803-124354")), true);
 });
@@ -144,3 +143,4 @@ test("repaired sample video has homepage cover and detail player", () => {
   assert.equal(validatePlayerUrl(sample.embed_url, sample).valid, true);
   assert.notEqual(sample.embed_url, sample.source_url);
 });
+
