@@ -3,10 +3,18 @@ import { getManifestUrl, mediaVideoId } from "./mediaWorkerClient.js";
 const players = new WeakMap();
 
 document.addEventListener("DOMContentLoaded", () => {
-  document.querySelectorAll("video[data-media-worker-player]").forEach((video) => {
+  initMediaWorkerPlayers(document);
+});
+
+document.addEventListener("media-worker-player:refresh", (event) => {
+  initMediaWorkerPlayers(event.detail?.root || document);
+});
+
+function initMediaWorkerPlayers(root = document) {
+  root.querySelectorAll("video[data-media-worker-player]").forEach((video) => {
     setupMediaWorkerPlayer(video).catch((error) => markPlayerError(video, error));
   });
-});
+}
 
 async function setupMediaWorkerPlayer(video) {
   if (players.has(video)) return;

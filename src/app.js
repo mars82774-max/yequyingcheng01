@@ -1,4 +1,5 @@
 import { activeAdItems, adsConfig, normalizeAds, SITE_CODE } from "./adsConfig.js";
+import "./mediaPlayer.js";
 import { mockVideos } from "./mockVideos.js";
 import { syncPlayerFrames } from "./playerFrame.js";
 import { rankFeaturedVideos, rankVideos } from "./ranking.js";
@@ -660,6 +661,7 @@ function renderDynamicMediaDetail(video) {
     </footer>
   `;
   syncPlayerFrames(app);
+  document.dispatchEvent(new CustomEvent("media-worker-player:refresh", { detail: { root: app } }));
 }
 
 function render() {
