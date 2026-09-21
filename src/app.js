@@ -2,7 +2,7 @@ import { activeAdItems, adsConfig, normalizeAds, SITE_CODE } from "./adsConfig.j
 import { mockVideos } from "./mockVideos.js";
 import { syncPlayerFrames } from "./playerFrame.js";
 import { rankFeaturedVideos, rankVideos } from "./ranking.js";
-import { applyMediaMetadata, getManifestUrl, getMetadata, isMediaWorkerVideo, mediaVideoId } from "./mediaWorkerClient.js";
+import { applyMediaMetadata, getManifestUrl, getMetadata, getPublicCatalog, isMediaWorkerVideo, mediaVideoId } from "./mediaWorkerClient.js";
 import { displayCoverUrl, isPublicVideo, playableEmbedUrl } from "./videoUrls.js";
 
 const brand = {
@@ -39,7 +39,7 @@ const INVALID_AD_TITLES = new Set([
   "Inline banner ad",
   "Player below ad"
 ]);
-const publicVideos = mockVideos.filter((video) => isPublicVideo(video) || isMediaWorkerVideo(video));
+const staticPublicVideos = mockVideos.filter((video) => isPublicVideo(video) || isMediaWorkerVideo(video));
 
 let state = {
   query: "",
@@ -47,7 +47,10 @@ let state = {
   selected: null,
   ads: adsConfig,
   mediaMetadata: new Map(),
-  mediaErrors: new Map()
+  mediaErrors: new Map(),
+  dynamicMediaRecords: [],
+  catalogError: "",
+  routeVideoId: routeMediaVideoId()
 };
 
 const app = document.querySelector("#app");
@@ -55,12 +58,26 @@ const app = document.querySelector("#app");
 init();
 
 async function init() {
-  const [ads, mediaState] = await Promise.all([loadAds(), loadMediaWorkerMetadata()]);
+  const [ads, mediaState, publicCatalog] = await Promise.all([loadAds(), loadMediaWorkerMetadata(), loadPublicMediaCatalog()]);
   state.ads = ads;
   state.mediaMetadata = mediaState.metadata;
   state.mediaErrors = mediaState.errors;
-  state.selected = sessionVideos()[0] || resolvedVideos()[0] || null;
+  state.dynamicMediaRecords = publicCatalog.records;
+  state.catalogError = publicCatalog.error;
+  const routedVideo = state.routeVideoId ? resolvedVideos().find((video) => isMediaWorkerVideo(video) && mediaVideoId(video) === state.routeVideoId) : null;
+  state.selected = routedVideo || sessionVideos()[0] || resolvedVideos()[0] || null;
   render();
+}
+
+async function loadPublicMediaCatalog() {
+  if (isDevEnvironment && !new URLSearchParams(window.location.search).has("mediaCatalog")) {
+    return { records: [], error: "" };
+  }
+  try {
+    return { records: await getPublicCatalog(), error: "" };
+  } catch (error) {
+    return { records: [], error: error?.message || "catalog_unavailable" };
+  }
 }
 
 async function loadMediaWorkerMetadata() {
@@ -69,7 +86,7 @@ async function loadMediaWorkerMetadata() {
   }
   const metadata = new Map();
   const errors = new Map();
-  const videos = mockVideos.filter(isMediaWorkerVideo);
+  const videos = staticPublicVideos.filter(isMediaWorkerVideo);
   await Promise.all(videos.map(async (video) => {
     const videoId = mediaVideoId(video);
     try {
@@ -116,13 +133,25 @@ function filteredVideos() {
   });
 }
 
+function publicVideos() {
+  const videos = [];
+  const seen = new Set();
+  for (const video of [...staticPublicVideos, ...state.dynamicMediaRecords]) {
+    const key = isMediaWorkerVideo(video) ? `media-worker:${mediaVideoId(video)}` : `legacy:${video.id}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    videos.push(video);
+  }
+  return videos;
+}
+
 function sessionVideos() {
   const byId = new Map(resolvedVideos().map((video) => [video.id, video]));
   return sessionVideoOrder().map((id) => byId.get(id)).filter(Boolean);
 }
 
 function resolvedVideos() {
-  return publicVideos.map(resolveVideo);
+  return publicVideos().map(resolveVideo);
 }
 
 function resolveVideo(video) {
@@ -130,6 +159,7 @@ function resolveVideo(video) {
   const videoId = mediaVideoId(video);
   const metadata = state.mediaMetadata.get(videoId);
   if (metadata) return applyMediaMetadata(video, metadata);
+  if (video.catalogDriven || video.mediaStatus === "READY") return video;
   return {
     ...video,
     title: state.mediaErrors.has(videoId) ? "媒體暫時無法取得" : "媒體資料載入中",
@@ -138,7 +168,7 @@ function resolveVideo(video) {
 }
 
 function sessionVideoOrder() {
-  const currentIds = publicVideos.map((video) => video.id);
+  const currentIds = publicVideos().map((video) => video.id);
   try {
     const stored = JSON.parse(sessionStorage.getItem(SHUFFLE_SESSION_KEY) || "[]");
     if (isValidVideoOrder(stored, currentIds)) return stored;
@@ -183,7 +213,13 @@ function publicTags(video) {
 }
 
 function videoPath(video) {
+  if (isMediaWorkerVideo(video)) return `/?media=${encodeURIComponent(mediaVideoId(video))}`;
   return `/video/${encodeURIComponent(video.id)}/`;
+}
+
+function routeMediaVideoId() {
+  const fromQuery = new URLSearchParams(window.location.search).get("media");
+  return fromQuery ? String(fromQuery).trim() : "";
 }
 
 function tagPath(tag) {
@@ -286,7 +322,7 @@ function renderHeroAdCarousel() {
 }
 
 function renderFeaturedVideosPanel(videos) {
-  const sourceVideos = videos.length ? videos : publicVideos;
+  const sourceVideos = videos.length ? videos : resolvedVideos();
   const videosWithCovers = sourceVideos.filter((video) => video.cover);
   const featuredVideos = rankFeaturedVideos(videosWithCovers.length >= 5 ? videosWithCovers : sourceVideos, {
     domain: rankingDomain(),
@@ -584,9 +620,57 @@ function videoCoverUrl(video) {
   return displayCoverUrl(video);
 }
 
+function renderDynamicMediaDetail(video) {
+  app.innerHTML = `
+    <header class="topbar">
+      <a class="brand" href="/" aria-label="${brand.name}">
+        <img src="${brand.logo}" alt="${brand.name}" />
+      </a>
+      <nav class="navlinks" aria-label="主要導覽">
+        <a href="/">首頁</a>
+        <a href="/#library">片庫</a>
+      </nav>
+    </header>
+
+    <main>
+      <article class="seo-detail dynamic-media-detail">
+        <p class="eyebrow">Media Worker</p>
+        <h1 class="video-detail-title">${escapeHtml(video.title)}</h1>
+        <div class="hero-player seo-player">
+          ${renderPlayer(video)}
+        </div>
+        <div class="video-info-panel" aria-label="Video information">
+          <div class="section-heading compact">
+            <div>
+              <p class="eyebrow">Source</p>
+              <h2>Media Worker</h2>
+            </div>
+          </div>
+          <dl class="video-info-grid">
+            <div><dt>Video ID</dt><dd>${escapeHtml(mediaVideoId(video))}</dd></div>
+            <div><dt>Status</dt><dd>${escapeHtml(video.mediaStatus || "READY")}</dd></div>
+          </dl>
+        </div>
+      </article>
+    </main>
+
+    <footer>
+      <img src="${brand.icon}" alt="" />
+      <span>${brand.name}</span>
+    </footer>
+  `;
+  syncPlayerFrames(app);
+}
+
 function render() {
+  const routedVideo = state.routeVideoId ? resolvedVideos().find((video) => isMediaWorkerVideo(video) && mediaVideoId(video) === state.routeVideoId) : null;
+  if (routedVideo) {
+    renderDynamicMediaDetail(routedVideo);
+    return;
+  }
+
   const videos = filteredVideos();
-  const featured = state.selected || videos[0] || publicVideos[0];
+  const featured = state.selected || videos[0] || resolvedVideos()[0];
   const mobileTop = renderAdSlot("ad_mobile_top", { className: "ad-mobile-top" });
   const leaderboard = renderAdSlot("ad_desktop_leaderboard", { className: "ad-leaderboard" });
   const heroFeatured = renderFeaturedVideosPanel(videos);

@@ -15,6 +15,10 @@ export function mediaWorkerUrl(path, baseUrl = MEDIA_WORKER_BASE_URL) {
   return new URL(path, baseUrl).toString();
 }
 
+export function mediaCatalogUrl(baseUrl = MEDIA_WORKER_BASE_URL) {
+  return mediaWorkerUrl('/media/catalog', baseUrl);
+}
+
 export function mediaMetadataUrl(videoId, baseUrl = MEDIA_WORKER_BASE_URL) {
   return mediaWorkerUrl(`/media/${encodeURIComponent(videoId)}/metadata`, baseUrl);
 }
@@ -26,6 +30,23 @@ export function mediaCoverUrl(videoId, baseUrl = MEDIA_WORKER_BASE_URL) {
 export function mediaManifestUrl(videoOrId, baseUrl = MEDIA_WORKER_BASE_URL) {
   const videoId = typeof videoOrId === "string" ? videoOrId : mediaVideoId(videoOrId);
   return mediaWorkerUrl(`/media/${encodeURIComponent(videoId)}/master.m3u8`, baseUrl);
+}
+
+export async function getPublicCatalog(options = {}) {
+  const timeoutMs = Math.max(1000, Number(options.timeoutMs || 8000));
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(mediaCatalogUrl(options.baseUrl), {
+      headers: { Accept: 'application/json' },
+      signal: controller.signal
+    });
+    if (!response.ok) throw new Error(`catalog_${response.status}`);
+    const payload = await response.json();
+    return normalizePublicCatalog(payload, options.baseUrl);
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 export async function getMetadata(videoId, options = {}) {
@@ -46,8 +67,41 @@ export async function getMetadata(videoId, options = {}) {
 }
 
 export const fetchMediaMetadata = getMetadata;
+export const fetchPublicMediaCatalog = getPublicCatalog;
+export const getCatalogUrl = mediaCatalogUrl;
 export const getCoverUrl = mediaCoverUrl;
 export const getManifestUrl = mediaManifestUrl;
+
+export function normalizePublicCatalog(payload, baseUrl = MEDIA_WORKER_BASE_URL) {
+  if (!Array.isArray(payload)) throw new Error('invalid_catalog');
+  return payload.map((item) => normalizePublicCatalogRecord(item, baseUrl));
+}
+
+export function normalizePublicCatalogRecord(item, baseUrl = MEDIA_WORKER_BASE_URL) {
+  const videoId = String(item?.video_id || '').trim();
+  const title = String(item?.title || '').replace(/\s+/g, ' ').trim();
+  const sourceType = String(item?.source_type || '').trim();
+  const cover = String(item?.cover || '').trim();
+  if (!MEDIA_ID_PATTERN.test(videoId) || !title || sourceType !== 'media-worker') throw new Error('invalid_catalog_record');
+  const coverUrl = cover ? mediaWorkerUrl(cover, baseUrl) : mediaCoverUrl(videoId, baseUrl);
+  return {
+    id: videoId,
+    slug: videoId,
+    source_type: 'media-worker',
+    type: 'media-worker',
+    video_id: videoId,
+    title,
+    thumbnail: coverUrl,
+    cover: coverUrl,
+    cover_source: coverUrl,
+    category: ['影音'],
+    tags: ['影音'],
+    date: '',
+    mediaStatus: 'READY',
+    mediaManifest: mediaManifestUrl(videoId, baseUrl),
+    catalogDriven: true
+  };
+}
 
 export function normalizeMediaMetadata(payload, baseUrl = MEDIA_WORKER_BASE_URL) {
   const videoId = String(payload?.video_id || "").trim();
